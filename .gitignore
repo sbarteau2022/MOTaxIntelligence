@@ -1,0 +1,9 @@
+node_modules/
+.dev.vars
+.wrangler/
+dist/
+
+# Fetched artifacts and built corpus are reproducible from source — do not
+# commit multi-MB raw HTML / vectors. Commit sources/ + code; regenerate data/.
+data/raw/
+data/*.jsonl

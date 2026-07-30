@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `wrangler dev`, and set the real value in production with
+# `wrangler secret put TAX_SERVICE_KEY`. Guards /admin/ingest.
+TAX_SERVICE_KEY="choose-a-long-random-string"

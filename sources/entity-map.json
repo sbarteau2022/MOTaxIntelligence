@@ -1,0 +1,21 @@
+{
+  "_comment": "CURATED, human-authored legal tagging. This is the authority for which entity class(es) each statute section belongs to. Keyword heuristics NEVER write here. Exact section keys override ranges. Every fetched section must resolve to a rule here OR be reported UNTAGGED by scripts/verify.mjs (never silently classified). Extend this file as sections are reviewed — it is meant to grow.",
+  "classes": ["llc_single_member", "llc_multi_member", "s_corp", "general"],
+  "class_notes": {
+    "llc_single_member": "One owner. Disregarded federally/MO by default → income on owner's MO-1040. Governed by Ch. 347 for entity law + Ch. 143 individual provisions.",
+    "llc_multi_member": "Two+ owners. Partnership by default → MO-1065. Atlas targets this class.",
+    "s_corp": "S corporation incl. LLC electing S. → MO-1120S. Used for multi-unit structures.",
+    "general": "Applies regardless of entity class (e.g. base/rate provisions). Not entity-filtered."
+  },
+  "sections": {
+    "143.436": ["s_corp", "llc_multi_member"],
+    "143.471": ["s_corp"],
+    "143.425": ["llc_multi_member"]
+  },
+  "_sections_review": "Seed anchors only, legally grounded: 143.436 = SALT Parity/PTET election (only partnerships & S corps may elect); 143.471 = S corporation treatment; 143.425 = partnership/withholding. All other Chapter 143 sections currently fall through to the range rule below as 'general' until individually reviewed — verify.mjs lists them so you can promote specific ones.",
+  "ranges": [
+    { "chapter": "143", "from": "143.005", "to": "143.999", "tags": ["general"], "note": "Income tax base/rate/admin — applies across entity classes unless a section above overrides." },
+    { "chapter": "347", "from": "347.010", "to": "347.999", "tags": ["llc_single_member", "llc_multi_member"], "note": "Missouri LLC Act governs both single- and multi-member LLCs." },
+    { "chapter": "351", "from": "351.010", "to": "351.999", "tags": ["s_corp", "general"], "note": "General/business corporation law underlying S-corp entities." }
+  ]
+}

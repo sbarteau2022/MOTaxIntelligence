@@ -1,0 +1,26 @@
+{
+  "name": "mo-tax-intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "db:schema": "wrangler d1 execute mo-tax --file src/schema.sql",
+    "db:schema:remote": "wrangler d1 execute mo-tax --remote --file src/schema.sql",
+    "pull:fetch": "node scripts/fetch.mjs",
+    "pull:build": "node scripts/build-corpus.mjs",
+    "pull:verify": "node scripts/verify.mjs",
+    "pull:ingest": "node scripts/ingest.mjs",
+    "pull:all": "npm run pull:fetch && npm run pull:build && npm run pull:verify && npm run pull:ingest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "playwright": "^1.48.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^3.80.0"
+  }
+}
