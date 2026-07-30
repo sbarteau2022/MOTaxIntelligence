@@ -3,8 +3,11 @@
 // STAGE 1 — FETCH. Pull raw section HTML to data/raw/ with provenance.
 //
 // Design notes:
-//  • revisor.mo.gov is bot-protected → default engine is Playwright (drives the
-//    pre-installed Chromium). Justia is a clean mirror → plain fetch.
+//  • Both statute sources resist headless access: revisor.mo.gov renders its
+//    section list via JS/bot-protection, and justia sits behind Cloudflare
+//    (403s a plain fetch). Both are fetched with a real browser (Playwright,
+//    driving the pre-installed Chromium). justia is the working default;
+//    revisor stays available via --source revisor to harden interactively.
 //  • Resumable: a section already on disk with a matching non-empty body is
 //    skipped unless --force. Re-running after a partial pull just fills gaps.
 //  • Raw HTML is archived verbatim so every later parse is auditable and the
@@ -13,8 +16,8 @@
 //    acceptable; getting rate-limited or IP-blocked is not.
 //
 // Usage:
-//   node scripts/fetch.mjs                       # all chapters, primary source (revisor)
-//   node scripts/fetch.mjs --source justia       # use the statute mirror
+//   node scripts/fetch.mjs                       # all chapters, default source (justia)
+//   node scripts/fetch.mjs --source revisor      # official source (JS-rendered; harden later)
 //   node scripts/fetch.mjs --source supplemental # DOR guidance FAQ pages
 //   node scripts/fetch.mjs --source regulations  # 12 CSR 10 (PDF)
 //   node scripts/fetch.mjs --chapter 143         # one chapter (statute sources only)
@@ -42,7 +45,10 @@ const args = parseArgs(process.argv.slice(2));
 
 async function main() {
   const manifest = JSON.parse(await readFile(path.join(ROOT, 'sources', 'manifest.json'), 'utf8'));
-  const sourceKey = args.source ?? 'revisor';
+  // Default statute source is justia: revisor.mo.gov renders its section list
+  // via JS and is bot-protected, so a headless pull sees no section links.
+  // justia (via a real browser, see makeFetcher) yields the full lists.
+  const sourceKey = args.source ?? 'justia';
 
   if (sourceKey === 'supplemental') return fetchSupplemental(manifest);
   if (sourceKey === 'regulations') return fetchRegulations(manifest);
@@ -71,7 +77,8 @@ async function fetchStatutes(manifest, sourceKey) {
         .replace('{section}', section)
         .replace('{section_slug}', section.replace('.', '-'))
         .replace('{chapter}', ch.chapter)
-        .replace('{title_slug}', ch.title_slug ?? '');
+        .replace('{title_slug}', ch.title_slug ?? '')
+        .replace('{justia_title}', ch.justia_title ?? '');
       try {
         const html = await fetchImpl(url);
         const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
@@ -165,13 +172,26 @@ async function fetchRegulations(manifest) {
 // if the manifest provides one instead of "discover").
 async function resolveSections(source, ch, fetchImpl) {
   if (Array.isArray(ch.sections)) return ch.sections;
-  const url = source.chapterIndexUrl.replace('{chapter}', ch.chapter).replace('{title_slug}', ch.title_slug ?? '');
+  const url = source.chapterIndexUrl
+    .replace('{chapter}', ch.chapter)
+    .replace('{title_slug}', ch.title_slug ?? '')
+    .replace('{justia_title}', ch.justia_title ?? '');
   const html = await fetchImpl(url);
   const re = new RegExp(source.sectionLinkPattern, 'g');
   const found = new Set();
   for (let m; (m = re.exec(html)); ) found.add(m[1].replace('-', '.'));
-  const list = [...found].sort((a, b) => ord(a) - ord(b));
-  if (!list.length) throw new Error(`no sections discovered for chapter ${ch.chapter} — check sectionLinkPattern/selectors against data/raw`);
+  // Keep only sections that actually belong to THIS chapter. Index pages link to
+  // cross-referenced sections in other chapters (e.g. §3.090) and boilerplate;
+  // without this guard the crawler pulls those junk links instead of the chapter.
+  const list = [...found].filter((s) => s.startsWith(ch.chapter + '.')).sort((a, b) => ord(a) - ord(b));
+  if (list.length < 3) {
+    throw new Error(
+      `discovered only ${list.length} section(s) for chapter ${ch.chapter}` +
+      `${list.length ? ' [' + list.join(', ') + ']' : ''} — the index page likely rendered its ` +
+      `section list via JS, or sectionLinkPattern/selectors are wrong for this source. ` +
+      `Inspect the raw-html artifact and fix sources/manifest.json (or use --source justia).`
+    );
+  }
   return list;
 }
 
@@ -185,13 +205,24 @@ async function makeFetcher(engine) {
     });
     const ctx = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+      locale: 'en-US',
+      viewport: { width: 1280, height: 900 },
+      extraHTTPHeaders: { 'accept-language': 'en-US,en;q=0.9' },
     });
     const fn = async (url) => {
       const page = await ctx.newPage();
       try {
         const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
-        return await page.content();
+        // Let JS-rendered lists (revisor.mo.gov) and any Cloudflare interstitial
+        // (justia) settle before reading the DOM.
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        const status = resp ? resp.status() : 0;
+        const html = await page.content();
+        // A challenge/error page is tiny; a real statute page is large. Throw
+        // only when an error status coincides with a too-small body, so a
+        // challenge-then-render still succeeds.
+        if (status >= 400 && html.length < 2000) throw new Error(`HTTP ${status}`);
+        return html;
       } finally {
         await page.close();
       }
@@ -199,10 +230,15 @@ async function makeFetcher(engine) {
     fn.close = () => browser.close();
     return fn;
   }
-  // plain fetch
+  // plain fetch — full browser-like headers (bare UAs get 403'd by Cloudflare
+  // fronts like justia / dor.mo.gov).
   const fn = async (url) => {
     const resp = await fetch(url, {
-      headers: { 'user-agent': 'Mozilla/5.0 (compatible; MOTaxIntelligence/1.0; +statute ingest)' },
+      headers: {
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'en-US,en;q=0.9',
+      },
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return await resp.text();
