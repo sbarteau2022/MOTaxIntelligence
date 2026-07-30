@@ -1,0 +1,99 @@
+name: pull-statutes
+
+# Runs the live pull where the network is open (GitHub-hosted runners can reach
+# revisor.mo.gov / justia / dor.mo.gov; Claude's sandbox egress policy cannot).
+# Stages:
+#   fetch  → raw statute HTML + DOR guidance (real browser via Playwright; both
+#            statute sources resist headless access — see scripts/fetch.mjs)
+#   build  → parse verbatim · classify entity · chunk · verify no-drift invariant
+#   verify → the flawlessness gate
+#   ingest → embed + upsert to the Worker (only when its secrets are configured)
+#
+# Artifacts (raw-html, corpus-jsonl) upload even on failure, so the first run
+# doubles as the selector-validation loop against live HTML.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Statute source (justia | revisor)"
+        default: "justia"
+      chapter:
+        description: "Limit to one chapter, e.g. 143 (blank = all)"
+        default: ""
+      include_regulations:
+        description: "Also pull 12 CSR 10 PDFs (division list is unverified)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 6 1 * *"   # monthly; statute text changes slowly
+  push:
+    branches: ["claude/**"]   # fire on the setup push so the pull starts immediately
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-statutes-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      INGEST_URL: ${{ secrets.INGEST_URL }}
+      SERVICE_KEY: ${{ secrets.TAX_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium (statute sources need a real browser)
+        run: npx playwright install --with-deps chromium
+
+      - name: Fetch statutes
+        run: >-
+          node scripts/fetch.mjs
+          ${{ inputs.source && format('--source {0}', inputs.source) || '' }}
+          ${{ inputs.chapter && format('--chapter {0}', inputs.chapter) || '' }}
+
+      - name: Fetch DOR guidance (supplemental)
+        run: node scripts/fetch.mjs --source supplemental
+
+      - name: Fetch regulations (12 CSR 10 PDFs) — opt-in
+        if: ${{ inputs.include_regulations == true }}
+        run: node scripts/fetch.mjs --source regulations
+
+      - name: Upload raw HTML/PDF (for selector auditing)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-html
+          path: data/raw/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Build corpus (parse · classify · chunk · verify invariant)
+        run: node scripts/build-corpus.mjs
+
+      - name: Verify — no-drift gate
+        run: node scripts/verify.mjs
+
+      - name: Upload built corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-jsonl
+          path: data/*.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Ingest to Worker (skipped unless INGEST_URL + TAX_SERVICE_KEY secrets set)
+        if: ${{ env.INGEST_URL != '' && env.SERVICE_KEY != '' }}
+        run: node scripts/ingest.mjs

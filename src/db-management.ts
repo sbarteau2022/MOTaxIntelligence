@@ -106,9 +106,15 @@ export interface DriftResult {
   fetchErrors: Array<{ parent_id: string; source_url: string; error: string }>;
 }
 
-// Only these two sources are plain-fetchable from a Worker (see the header
-// comment) — revisor.mo.gov is bot-protected and regulations are PDF.
-const DRIFT_CHECKABLE_SOURCES = ['justia', 'supplemental'];
+// Sources a Worker can re-fetch with a plain `fetch` to drift-check. Only DOR
+// guidance ('supplemental') qualifies: revisor.mo.gov is bot-protected, PDF
+// regulations need pdf-parse, and 'justia' — though it's the default statute
+// mirror — sits behind Cloudflare and 403s a serverless plain fetch (proven in
+// the pull pipeline), so re-fetching it from the Worker only ever yields
+// fetchErrors, never a real drift signal. Browser-only sources are instead
+// drift-verified at pull time: the local `fetch → build → verify` re-fetches
+// and re-hashes them, and that pipeline is the only path that writes a body.
+const DRIFT_CHECKABLE_SOURCES = ['supplemental'];
 const MAX_DRIFT_CHECKS_PER_RUN = 25;
 
 export async function checkSourceDrift(env: Env): Promise<DriftResult> {
@@ -127,7 +133,11 @@ export async function checkSourceDrift(env: Env): Promise<DriftResult> {
     checked++;
     try {
       const resp = await fetch(row.source_url, {
-        headers: { 'user-agent': 'Mozilla/5.0 (compatible; MOTaxIntelligence/1.0; +drift-check)' },
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+          'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'accept-language': 'en-US,en;q=0.9',
+        },
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const bytes = new Uint8Array(await resp.arrayBuffer());

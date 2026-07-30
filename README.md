@@ -72,6 +72,25 @@ INGEST_URL=https://mo-tax.<subdomain>.workers.dev SERVICE_KEY=... npm run pull:i
 npm run deploy
 ```
 
+## Automated pull (CI)
+
+The pull runs where the network is open. `.github/workflows/pull.yml` executes
+`fetch → build → verify` on a GitHub-hosted runner (both statute sources resist
+headless access — revisor renders its list via JS, Justia sits behind
+Cloudflare — so fetching uses a real browser via Playwright), uploads the raw
+HTML and built corpus as artifacts, and ingests to the Worker when `INGEST_URL`
++ `TAX_SERVICE_KEY` repo secrets are set. It runs monthly and on manual
+dispatch:
+
+- **Dispatch** (Actions → *pull-statutes* → Run workflow): `source`
+  (`justia` | `revisor`), `chapter`, and `include_regulations` (12 CSR 10 PDFs,
+  off by default until their division list is verified) inputs.
+- The default run pulls statutes + DOR guidance. Artifacts upload even on
+  failure, so the first run doubles as **selector validation** — download
+  `raw-html`, confirm `sources/manifest.json` selectors against the real DOM,
+  re-run. `build`/`verify` fail loudly on any drift/gap/untagged section, so a
+  green run means a flawless corpus.
+
 ## Database management
 
 `POST /admin/verify` and `GET /admin/stats` (both `TAX_SERVICE_KEY`-gated, like

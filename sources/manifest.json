@@ -21,9 +21,10 @@
     "justia": {
       "label": "Justia US Codes (mirror, clean HTML)",
       "authority": "fallback",
-      "engine": "fetch",
-      "chapterIndexUrl": "https://law.justia.com/codes/missouri/title-x/chapter-{chapter}/",
-      "sectionUrl": "https://law.justia.com/codes/missouri/{title_slug}/chapter-{chapter}/section-{section_slug}/",
+      "engine": "playwright",
+      "_engine_note": "Justia sits behind Cloudflare and 403s a plain fetch; a real browser passes. Content is static, so Playwright reads it directly.",
+      "chapterIndexUrl": "https://law.justia.com/codes/missouri/{justia_title}/chapter-{chapter}/",
+      "sectionUrl": "https://law.justia.com/codes/missouri/{justia_title}/chapter-{chapter}/section-{section_slug}/",
       "sectionLinkPattern": "/section-([0-9]+-[0-9]+)/",
       "bodySelectors": [".codes-content", "#codes-content", "article"],
       "catchlineSelectors": ["h1"],
@@ -36,6 +37,7 @@
     {
       "chapter": "143",
       "title_slug": "title-x-taxation-and-revenue",
+      "justia_title": "title-x",
       "label": "Income Tax",
       "note": "Core. Individual + fiduciary + corporate income tax, S-corp treatment (143.471), and the SALT Parity / pass-through entity election (143.436).",
       "sections": "discover"
@@ -43,6 +45,7 @@
     {
       "chapter": "347",
       "title_slug": "title-xxiii-corporations-associations-and-partnerships",
+      "justia_title": "title-xxiii",
       "label": "Missouri Limited Liability Company Act",
       "note": "Formation/governance of LLCs (single- and multi-member).",
       "sections": "discover"
@@ -50,6 +53,7 @@
     {
       "chapter": "351",
       "title_slug": "title-xxiii-corporations-associations-and-partnerships",
+      "justia_title": "title-xxiii",
       "label": "General and Business Corporation Law",
       "note": "Corporate law underlying S-corp entities.",
       "sections": "discover"
