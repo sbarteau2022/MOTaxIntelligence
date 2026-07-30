@@ -80,7 +80,7 @@ async function fetchStatutes(manifest, sourceKey) {
         .replace('{title_slug}', ch.title_slug ?? '')
         .replace('{justia_title}', ch.justia_title ?? '');
       try {
-        const html = await fetchImpl(url);
+        const html = await fetchWithRetry(fetchImpl, url);
         const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
         await writeFile(file, html, 'utf8');
         await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
@@ -176,14 +176,37 @@ async function resolveSections(source, ch, fetchImpl) {
     .replace('{chapter}', ch.chapter)
     .replace('{title_slug}', ch.title_slug ?? '')
     .replace('{justia_title}', ch.justia_title ?? '');
-  const html = await fetchImpl(url);
-  const re = new RegExp(source.sectionLinkPattern, 'g');
-  const found = new Set();
-  for (let m; (m = re.exec(html)); ) found.add(m[1].replace('-', '.'));
-  // Keep only sections that actually belong to THIS chapter. Index pages link to
-  // cross-referenced sections in other chapters (e.g. §3.090) and boilerplate;
-  // without this guard the crawler pulls those junk links instead of the chapter.
-  const list = [...found].filter((s) => s.startsWith(ch.chapter + '.')).sort((a, b) => ord(a) - ord(b));
+  // Discovery has been seen to return 0 links on an otherwise-working source —
+  // a transient Cloudflare challenge on just the index request, distinct from
+  // the section pages that immediately followed it succeeding. Retry the
+  // index fetch before concluding the selectors are actually wrong, so one
+  // flaky request doesn't fail an entire chapter.
+  const html = await fetchWithRetry(fetchImpl, url, { attempts: 4, baseDelayMs: 2000 });
+
+  const extractSections = (h) => {
+    const re = new RegExp(source.sectionLinkPattern, 'g');
+    const found = new Set();
+    for (let m; (m = re.exec(h)); ) found.add(m[1].replace('-', '.'));
+    // Keep only sections that actually belong to THIS chapter. Index pages link
+    // to cross-referenced sections in other chapters (e.g. §3.090) and
+    // boilerplate; without this guard the crawler pulls those junk links
+    // instead of the chapter.
+    return [...found].filter((s) => s.startsWith(ch.chapter + '.')).sort((a, b) => ord(a) - ord(b));
+  };
+
+  let list = extractSections(html);
+
+  // Empty result even after a successful fetch: re-request the index page
+  // itself once more before giving up — this is the "chapter 347 got 0
+  // sections" case seen in CI, where the request 200'd but rendered a
+  // challenge/interstitial instead of the real list.
+  for (let attempt = 0; attempt < 2 && list.length < 3; attempt++) {
+    await sleep(3000 * 2 ** attempt);
+    try {
+      list = extractSections(await fetchImpl(url));
+    } catch { /* keep retrying */ }
+  }
+
   if (list.length < 3) {
     throw new Error(
       `discovered only ${list.length} section(s) for chapter ${ch.chapter}` +
@@ -214,8 +237,13 @@ async function makeFetcher(engine) {
       try {
         const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         // Let JS-rendered lists (revisor.mo.gov) and any Cloudflare interstitial
-        // (justia) settle before reading the DOM.
-        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        // (justia) settle before reading the DOM. A fixed short wait, not
+        // networkidle: justia keeps ad/tracker connections open indefinitely,
+        // so networkidle was timing out on EVERY page (~15s tax x 168 sections
+        // = ~45min for one chapter, threatening the job's 90min budget) for no
+        // benefit — a real statute page or a Cloudflare challenge both finish
+        // rendering well under a second.
+        await page.waitForTimeout(600);
         const status = resp ? resp.status() : 0;
         const html = await page.content();
         // A challenge/error page is tiny; a real statute page is large. Throw
@@ -254,6 +282,22 @@ async function nonEmptyBinary(file) {
 }
 function ord(s) { const [a, b = '0'] = s.split('.'); return Number(a) * 1e6 + Number(b.padEnd(6, '0')); }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// Shared retry-with-backoff around a single fetchImpl(url) call — used for
+// both chapter-index discovery and individual section pages, since both hit
+// the same transient-Cloudflare-challenge failure mode.
+async function fetchWithRetry(fetchImpl, url, { attempts = 3, baseDelayMs = 1500 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetchImpl(url);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < attempts - 1) await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+  throw new Error(`fetch failed after ${attempts} attempts: ${lastErr?.message}`);
+}
 function parseArgs(a) {
   const o = {};
   for (let i = 0; i < a.length; i++) {
