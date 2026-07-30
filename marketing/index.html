@@ -5,455 +5,648 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MOTaxIntelligence — Citation-Exact Tax Code Retrieval</title>
 <meta name="description" content="Zero-drift, cite-to-the-letter Missouri tax-code retrieval built for AI agent platforms. No paraphrase. No hallucination surface. Every answer traces to a verbatim, checksummed statute.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Barlow / Barlow Condensed — the Atlas Command Center type system,
+     carried over from RAPIDAi's ui/ redesign (Titanium + Gold palette,
+     glass cards, gold pill buttons, monospace eyebrow labels) so this
+     product reads as part of the same family. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@400;500;600;700&display=swap">
 <style>
-  :root {
-    --bg: #0b0f14;
-    --bg-alt: #10161d;
-    --panel: #131b24;
-    --panel-border: #223040;
-    --text: #e7edf3;
-    --text-dim: #9fb0c0;
-    --text-dimmer: #6b7d8e;
-    --accent: #d4a24c;
-    --accent-bright: #ecc17a;
-    --accent-dim: #8a6c33;
-    --good: #5fb98c;
-    --code-bg: #0a1017;
-    --radius: 10px;
-    --serif: Georgia, 'Times New Roman', serif;
-    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-  }
-  a { color: var(--accent-bright); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-  section { overflow-x: hidden; }
+:root {
+  /* ATLAS COMMAND CENTER — Titanium + Gold */
+  --bg:        #f2f2f3;
+  --bg-alt:    #eceef2;
+  --bg-paper:  color-mix(in srgb, #fff 80%, transparent);
+  --bg-paper-solid: color-mix(in srgb, #fff 92%, transparent);
+  --ink:       #1d1f20;
+  --ink-soft:  #40454a;
+  --ink-dim:   rgba(29, 31, 32, 0.62);
+  --ink-faint: rgba(29, 31, 32, 0.40);
+  --ink-ghost: rgba(29, 31, 32, 0.10);
+  --line:      #ced3da;
+  --line-hi:   #a7aeb8;
+  --gold:      #b3902f;
+  --gold-soft: #c9a83f;
+  --gold-hi:   #e6d49a;
+  --gold-deep: #8a6f22;
+  --gold-glow: rgba(179, 144, 47, 0.16);
+  --signal:    #3f8f5f;
+  --warn:      #a8791f;
+  --red:       #b3453a;
+  --shadow-lg: 0 30px 60px -28px rgba(20, 26, 38, 0.35);
+  --shadow-sm: 0 2px 6px -2px rgba(20, 26, 38, 0.14);
+}
 
-  /* ---------- nav ---------- */
-  header.nav {
-    position: sticky; top: 0; z-index: 50;
-    background: rgba(11,15,20,0.9);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--panel-border);
-  }
-  .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; max-width: 1120px; margin: 0 auto; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; color: var(--text); }
-  .brand-mark {
-    width: 28px; height: 28px; border-radius: 6px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-dim));
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--serif); font-weight: bold; color: #1a1408; font-size: 15px;
-  }
-  .nav-links { display: flex; gap: 28px; font-size: 14.5px; color: var(--text-dim); }
-  .nav-links a { color: var(--text-dim); }
-  .nav-links a:hover { color: var(--text); text-decoration: none; }
-  .nav-cta {
-    padding: 8px 16px; border-radius: 7px; background: var(--accent); color: #1a1408 !important;
-    font-weight: 600; font-size: 14px;
-  }
-  .nav-cta:hover { background: var(--accent-bright); text-decoration: none; }
-  .nav-toggle { display: none; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 350;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
 
-  /* ---------- hero ---------- */
-  .hero { padding: 96px 0 72px; text-align: center; }
-  .eyebrow {
-    display: inline-block; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--accent-bright); border: 1px solid var(--accent-dim); background: rgba(212,162,76,0.08);
-    padding: 6px 14px; border-radius: 999px; margin-bottom: 24px;
-  }
-  h1 { font-size: 52px; line-height: 1.1; margin: 0 0 22px; letter-spacing: -0.02em; }
-  h1 .accent { color: var(--accent-bright); }
-  .subhead { font-size: 19px; color: var(--text-dim); max-width: 700px; margin: 0 auto 40px; }
-  .hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 56px; }
-  .btn { padding: 13px 26px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block; }
-  .btn-primary { background: var(--accent); color: #1a1408; }
-  .btn-primary:hover { background: var(--accent-bright); text-decoration: none; }
-  .btn-secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
-  .btn-secondary:hover { border-color: var(--text-dim); text-decoration: none; }
+.bg-fill { position: fixed; inset: 0; z-index: -3; background: linear-gradient(180deg, var(--bg-alt) 0%, var(--bg) 100%); pointer-events: none; }
+.bg-grain {
+  position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background-image:
+    radial-gradient(900px circle at 12% 8%, var(--gold-glow), transparent 60%),
+    radial-gradient(900px circle at 88% 28%, rgba(20, 50, 100, 0.08), transparent 65%);
+}
+.bg-mesh {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(10,19,32,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10,19,32,0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 100% 80% at 50% 0%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 100% 80% at 50% 0%, #000 40%, transparent 100%);
+}
 
-  /* proof strip */
-  .proof-strip {
-    display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;
-    padding-top: 40px; border-top: 1px solid var(--panel-border);
-  }
-  .proof-item { text-align: center; }
-  .proof-num { font-size: 28px; font-weight: 700; color: var(--accent-bright); font-family: var(--mono); }
-  .proof-label { font-size: 13px; color: var(--text-dimmer); margin-top: 4px; }
+a { color: inherit; text-decoration: none; }
+code { font-family: 'Barlow', monospace; }
 
-  /* ---------- generic section heading ---------- */
-  .section { padding: 84px 0; }
-  .section-alt { background: var(--bg-alt); }
-  .section-head { text-align: center; max-width: 640px; margin: 0 auto 56px; }
-  .section-tag { font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-bright); font-weight: 600; margin-bottom: 12px; }
-  .section-head h2 { font-size: 34px; margin: 0 0 14px; letter-spacing: -0.01em; }
-  .section-head p { color: var(--text-dim); font-size: 16.5px; margin: 0; }
+h1, h2, h3, h4 { font-family: 'Barlow Condensed', serif; font-weight: 450; line-height: 1.08; letter-spacing: -0.018em; color: var(--ink); }
 
-  /* ---------- problem / compare ---------- */
-  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .compare-card { border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 28px; background: var(--panel); }
-  .compare-card.bad { border-color: #4a2a2a; }
-  .compare-card.good { border-color: var(--accent-dim); background: linear-gradient(180deg, rgba(212,162,76,0.06), transparent 40%), var(--panel); }
-  .compare-title { font-weight: 700; font-size: 16px; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
-  .compare-title .dot { width: 9px; height: 9px; border-radius: 50%; }
-  .bad .dot { background: #d9695f; }
-  .good .dot { background: var(--good); }
-  .compare ul { margin: 0; padding: 0; list-style: none; }
-  .compare li { padding: 9px 0; border-bottom: 1px dashed var(--panel-border); font-size: 14.5px; color: var(--text-dim); }
-  .compare li:last-child { border-bottom: none; }
-  .compare code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px; color: var(--accent-bright); }
+.eyebrow {
+  font-family: 'Barlow', monospace; font-size: 0.66rem; letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--gold); display: inline-flex; align-items: center; gap: 12px;
+}
+.eyebrow::before { content: ''; width: 28px; height: 1px; background: var(--gold); opacity: 0.5; }
 
-  /* ---------- pipeline ---------- */
-  .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
-  .pipe-step { border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 24px 20px; background: var(--panel); position: relative; }
-  .pipe-num { font-family: var(--mono); font-size: 13px; color: var(--accent-bright); margin-bottom: 10px; }
-  .pipe-step h3 { font-size: 16px; margin: 0 0 8px; }
-  .pipe-step p { font-size: 13.5px; color: var(--text-dim); margin: 0; }
-  .pipe-arrow { display: none; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 40px; }
+.wrap-tight { max-width: 980px; margin: 0 auto; padding: 0 40px; }
+section { padding: 120px 0; position: relative; }
 
-  /* ---------- features grid ---------- */
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .feature-card { border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 26px; background: var(--panel); }
-  .feature-icon {
-    width: 38px; height: 38px; border-radius: 8px; background: rgba(212,162,76,0.12);
-    display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
-    color: var(--accent-bright); font-size: 18px; font-family: var(--mono); font-weight: bold;
-  }
-  .feature-card h3 { font-size: 16.5px; margin: 0 0 8px; }
-  .feature-card p { font-size: 14px; color: var(--text-dim); margin: 0; }
+/* ============ NAV ============ */
+nav.top {
+  position: sticky; top: 0; z-index: 80;
+  background: color-mix(in oklab, var(--bg), transparent 18%);
+  backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-bottom: 1px solid var(--line);
+}
+.nav-inner { display: flex; justify-content: space-between; align-items: center; padding: 14px 40px; max-width: 1440px; margin: 0 auto; gap: 20px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); }
+.brand-mark { width: 28px; height: 28px; display: inline-flex; }
+.brand-mark svg { width: 100%; height: 100%; }
+.brand-text { font-family: 'Barlow Condensed', serif; font-weight: 600; font-size: 1.16rem; letter-spacing: -0.01em; color: var(--ink); }
+.brand-text .co { color: var(--gold); font-weight: 450; }
+.nav-mid { display: flex; gap: 30px; align-items: center; }
+.nav-mid a { font-family: 'Barlow', monospace; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-dim); transition: color 0.2s; }
+.nav-mid a:hover { color: var(--ink); }
+.nav-right { display: flex; align-items: center; gap: 14px; }
 
-  /* ---------- entity table ---------- */
-  .entity-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
-  .entity-table th, .entity-table td { padding: 14px 16px; border-bottom: 1px solid var(--panel-border); text-align: left; }
-  .entity-table th { color: var(--text-dimmer); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; }
-  .entity-table td.mono, .entity-table code { font-family: var(--mono); color: var(--accent-bright); font-size: 13.5px; }
-  .entity-table tr:last-child td { border-bottom: none; }
+/* ============ BUTTONS ============ */
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: 'Barlow', monospace; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500;
+  padding: 14px 28px; border-radius: 100px; cursor: pointer; transition: all 0.22s; border: 1px solid transparent; white-space: nowrap;
+}
+.btn .arrow { transition: transform 0.22s; display: inline-block; }
+.btn:hover .arrow { transform: translateX(3px); }
+.btn-primary { background: var(--ink); color: var(--bg); box-shadow: 0 10px 30px -10px color-mix(in oklab, var(--ink), transparent 60%); }
+.btn-primary:hover { transform: translateY(-2px); background: var(--ink-soft); }
+.btn-gold { background: var(--gold); color: #fff; box-shadow: 0 10px 30px -10px var(--gold-glow); }
+.btn-gold:hover { background: var(--gold-soft); transform: translateY(-2px); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--line-hi); }
+.btn-ghost:hover { border-color: var(--ink); }
+.btn-sm { padding: 10px 18px; font-size: 0.7rem; }
 
-  /* ---------- code sample ---------- */
-  .code-sample {
-    background: var(--code-bg); border: 1px solid var(--panel-border); border-radius: var(--radius);
-    padding: 22px 24px; font-family: var(--mono); font-size: 13.5px; overflow-x: auto; color: #c9d6e0;
-  }
-  .code-sample .k { color: #7ea7c9; }
-  .code-sample .s { color: var(--good); }
-  .code-sample .c { color: var(--text-dimmer); }
+/* ============ HERO ============ */
+.hero { min-height: 88vh; padding-top: 90px; padding-bottom: 70px; display: flex; align-items: center; }
+.hero-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 70px; align-items: center; width: 100%; }
+.hero-eyebrow-row { display: flex; align-items: center; gap: 24px; margin-bottom: 34px; flex-wrap: wrap; }
+.hero-status { font-family: 'Barlow', monospace; font-size: 0.66rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); display: inline-flex; align-items: center; gap: 8px; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 0 var(--signal); animation: pulse 2s infinite; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--signal), transparent 30%); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.hero-q h1 { font-size: clamp(2.4rem, 4.6vw, 3.9rem); margin-bottom: 22px; text-wrap: balance; }
+.hero-q h1 .soft { color: var(--ink-dim); font-weight: 350; font-style: italic; }
+.hero-q .sub { font-size: 1.1rem; color: var(--ink-dim); max-width: 560px; line-height: 1.65; margin-bottom: 34px; }
+.hero-q .sub strong { color: var(--ink); font-weight: 500; }
+.hero-actions { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.hero-actions .micro { font-family: 'Barlow', monospace; font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-left: 4px; }
 
-  /* ---------- pricing ---------- */
-  .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: stretch; }
-  .price-card {
-    border: 1px solid var(--panel-border); border-radius: 14px; padding: 32px 28px;
-    background: var(--panel); display: flex; flex-direction: column;
-  }
-  .price-card.featured {
-    border-color: var(--accent); background: linear-gradient(180deg, rgba(212,162,76,0.09), transparent 50%), var(--panel);
-    position: relative;
-  }
-  .price-badge {
-    position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
-    background: var(--accent); color: #1a1408; font-size: 12px; font-weight: 700;
-    padding: 4px 14px; border-radius: 999px; letter-spacing: 0.02em;
-  }
-  .tier-name { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dimmer); font-weight: 600; }
-  .tier-price { font-size: 38px; font-weight: 700; margin: 12px 0 4px; }
-  .tier-price small { font-size: 15px; font-weight: 400; color: var(--text-dim); }
-  .tier-desc { font-size: 14px; color: var(--text-dim); margin-bottom: 24px; min-height: 40px; }
-  .tier-features { list-style: none; margin: 0 0 28px; padding: 0; flex-grow: 1; }
-  .tier-features li { font-size: 14px; padding: 8px 0; color: var(--text-dim); display: flex; gap: 10px; }
-  .tier-features li::before { content: "✓"; color: var(--good); font-weight: 700; flex-shrink: 0; }
-  .tier-btn { text-align: center; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 14.5px; border: 1px solid var(--panel-border); color: var(--text); }
-  .tier-btn:hover { text-decoration: none; border-color: var(--text-dim); }
-  .price-card.featured .tier-btn { background: var(--accent); color: #1a1408; border-color: var(--accent); }
-  .price-card.featured .tier-btn:hover { background: var(--accent-bright); }
-  .pricing-note { text-align: center; color: var(--text-dimmer); font-size: 13.5px; margin-top: 32px; }
+/* hero data card */
+.hero-data { position: relative; background: var(--bg-paper); border: 1px solid var(--line); border-radius: 20px; padding: 24px; box-shadow: var(--shadow-lg); backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); }
+.hero-data::before {
+  content: ''; position: absolute; inset: 0; border-radius: 20px; padding: 1px;
+  background: linear-gradient(160deg, var(--line-hi), transparent 50%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+.hd-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.hd-app { font-family: 'Barlow', monospace; font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); display: inline-flex; align-items: center; gap: 8px; }
+.hd-live { font-family: 'Barlow', monospace; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+.hd-title { font-family: 'Barlow', monospace; font-size: 0.66rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
+.hd-big { font-family: 'Barlow Condensed', serif; font-weight: 500; font-size: 2.6rem; line-height: 1; color: var(--ink); letter-spacing: -0.02em; }
+.hd-big .delta { font-family: 'Barlow', monospace; font-size: 0.82rem; letter-spacing: 0.04em; color: var(--signal); margin-left: 10px; font-weight: 500; vertical-align: middle; }
+.hd-sub { font-size: 0.85rem; color: var(--ink-dim); margin-top: 6px; line-height: 1.4; }
+.hd-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
+.hd-cell { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--bg); }
+.hd-cell .k { font-family: 'Barlow', monospace; font-size: 0.58rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+.hd-cell .v { font-family: 'Barlow Condensed', serif; font-weight: 500; font-size: 1.4rem; margin-top: 4px; }
+.hd-cell .v.good { color: var(--signal); }
+.hd-foot { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); font-family: 'Barlow', monospace; font-size: 0.66rem; color: var(--ink-faint); display: flex; justify-content: space-between; }
+.hd-foot .src { color: var(--gold); }
 
-  /* ---------- who it's for ---------- */
-  .who-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
-  .who-card { border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 22px; background: var(--panel); text-align: center; }
-  .who-card .who-icon { font-size: 22px; margin-bottom: 12px; }
-  .who-card h4 { font-size: 14.5px; margin: 0 0 6px; }
-  .who-card p { font-size: 12.5px; color: var(--text-dimmer); margin: 0; }
+/* op strip */
+.op-strip { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 22px 0; margin-top: 30px; }
+.op-strip-inner { display: flex; align-items: center; justify-content: space-between; gap: 30px; flex-wrap: wrap; }
+.op-label { font-family: 'Barlow', monospace; font-size: 0.62rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); }
+.op-list { display: flex; gap: 36px; flex-wrap: wrap; font-family: 'Barlow Condensed', serif; font-style: italic; color: var(--ink-dim); font-size: 0.96rem; }
+.op-list span { display: inline-flex; align-items: center; gap: 8px; }
+.op-list .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--gold); display: inline-block; }
 
-  /* ---------- FAQ ---------- */
-  .faq { max-width: 780px; margin: 0 auto; }
-  details {
-    border: 1px solid var(--panel-border); border-radius: var(--radius); background: var(--panel);
-    padding: 18px 22px; margin-bottom: 12px;
-  }
-  summary { cursor: pointer; font-weight: 600; font-size: 15.5px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
-  summary::-webkit-details-marker { display: none; }
-  summary::after { content: "+"; color: var(--accent-bright); font-size: 20px; font-weight: 400; }
-  details[open] summary::after { content: "−"; }
-  details p { color: var(--text-dim); font-size: 14.5px; margin: 14px 0 2px; }
+/* ============ STATS DECK ============ */
+.stats { padding: 90px 0 0; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.stat-card { background: var(--bg-paper); border: 1px solid var(--line); border-radius: 16px; padding: 26px 24px; box-shadow: var(--shadow-sm); backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); }
+.stat-card .v { font-family: 'Barlow Condensed', serif; font-weight: 500; font-size: 2.4rem; line-height: 1; color: var(--gold); letter-spacing: -0.02em; }
+.stat-card .k { font-family: 'Barlow', monospace; font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); margin-top: 12px; font-weight: 500; }
+.stat-card .d { font-size: 0.85rem; color: var(--ink-dim); margin-top: 8px; line-height: 1.5; }
 
-  /* ---------- final CTA ---------- */
-  .cta-band {
-    text-align: center; padding: 90px 24px; border-radius: 20px; margin: 0 24px;
-    background: linear-gradient(135deg, rgba(212,162,76,0.1), rgba(212,162,76,0.02));
-    border: 1px solid var(--accent-dim);
-  }
-  .cta-band h2 { font-size: 32px; margin: 0 0 16px; }
-  .cta-band p { color: var(--text-dim); max-width: 520px; margin: 0 auto 32px; }
+/* ============ SECTION HEAD ============ */
+.sec-head { margin-bottom: 44px; max-width: 820px; }
+.sec-head .num { font-family: 'Barlow', monospace; font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); margin-bottom: 18px; display: block; }
+.sec-head h2 { font-size: clamp(2rem, 3.6vw, 3rem); margin-bottom: 10px; text-wrap: balance; }
+.body-txt { font-size: 1.03rem; color: var(--ink-dim); max-width: 660px; margin-bottom: 22px; line-height: 1.65; }
+.body-txt strong { color: var(--ink); font-weight: 500; }
+.truth { display: inline-block; font-family: 'Barlow', monospace; font-size: 0.86rem; color: var(--gold); line-height: 1.6; border-left: 2px solid var(--gold); padding: 6px 0 6px 22px; margin: 20px 0; font-weight: 500; }
 
-  /* ---------- footer ---------- */
-  footer { border-top: 1px solid var(--panel-border); padding: 48px 0 32px; }
-  .footer-grid { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 32px; margin-bottom: 32px; }
-  .footer-brand p { color: var(--text-dimmer); font-size: 13.5px; max-width: 280px; margin-top: 12px; }
-  .footer-cols { display: flex; gap: 56px; flex-wrap: wrap; }
-  .footer-col h5 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dimmer); margin: 0 0 14px; }
-  .footer-col a { display: block; color: var(--text-dim); font-size: 14px; margin-bottom: 10px; }
-  .footer-col a:hover { color: var(--text); }
-  .footer-bottom { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--text-dimmer); font-size: 12.5px; border-top: 1px solid var(--panel-border); padding-top: 24px; }
+/* ============ FEATURE LAYOUT ============ */
+.feat { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+.feat.reverse > :first-child { order: 2; }
+.feat-copy .num { color: var(--gold); font-family: 'Barlow', monospace; font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: 18px; display: block; }
+.feat-copy h3 { font-size: clamp(1.5rem, 2.3vw, 1.95rem); margin-bottom: 18px; text-wrap: balance; }
+.feat-copy h3 em { color: var(--ink-dim); font-weight: 400; }
 
-  /* ---------- responsive ---------- */
-  @media (max-width: 980px) {
-    .nav-links { display: none; }
-    .pipeline, .features, .who-grid { grid-template-columns: repeat(2, 1fr); }
-    .pricing-grid { grid-template-columns: 1fr; max-width: 440px; margin: 0 auto; }
-  }
-  @media (max-width: 640px) {
-    h1 { font-size: 32px; }
-    .subhead { font-size: 16px; }
-    .compare, .pipeline, .features, .who-grid { grid-template-columns: 1fr; }
-    .section { padding: 56px 0; }
-    .footer-grid { flex-direction: column; }
-    .proof-strip { gap: 28px; }
-    .hero { padding: 64px 0 48px; }
-  }
+/* cards */
+.card {
+  background: var(--bg-paper); border: 1px solid var(--line); border-radius: 18px; padding: 22px;
+  box-shadow: var(--shadow-lg); position: relative;
+  backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+.card::before {
+  content: ''; position: absolute; inset: 0; border-radius: 18px; padding: 1px;
+  background: linear-gradient(160deg, var(--line-hi), transparent 50%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+.card.tint-bad { border-color: color-mix(in oklab, var(--red), var(--line) 50%); }
+.card.tint-good { border-color: var(--gold); }
+.card-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 14px; }
+.card-title { font-family: 'Barlow', monospace; font-size: 0.66rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.card-title .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.card-title.bad .dot { background: var(--red); }
+.card-title.good .dot { background: var(--gold); }
+.card-meta { font-family: 'Barlow', monospace; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+.check-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.check-list li { font-size: 0.88rem; color: var(--ink-dim); line-height: 1.55; padding-bottom: 12px; border-bottom: 1px dashed var(--line); }
+.check-list li:last-child { border-bottom: none; padding-bottom: 0; }
+.check-list code { background: var(--bg); padding: 1px 6px; border-radius: 4px; color: var(--gold); font-size: 0.82rem; }
+
+/* pipeline timeline card */
+.pipe-list { display: flex; flex-direction: column; }
+.pipe-item { display: grid; grid-template-columns: 44px 1fr; gap: 16px; padding: 16px 0; border-top: 1px dashed var(--line); }
+.pipe-item:first-child { border-top: none; padding-top: 0; }
+.pipe-item:last-child { padding-bottom: 0; }
+.pipe-badge {
+  width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--gold);
+  color: var(--gold); font-family: 'Barlow', monospace; font-size: 0.7rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.pipe-item h4 { font-family: 'Barlow', sans-serif; font-weight: 600; font-size: 0.98rem; margin-bottom: 4px; color: var(--ink); }
+.pipe-item p { font-size: 0.86rem; color: var(--ink-dim); line-height: 1.55; }
+
+/* entity table */
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.tbl th { font-family: 'Barlow', monospace; font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; }
+.tbl td { border-bottom: 1px dashed var(--line); padding: 12px 8px; color: var(--ink-soft); }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl code { color: var(--gold); font-size: 0.82rem; }
+
+/* code sample card */
+.code-card { font-family: 'Barlow', monospace; font-size: 0.82rem; color: var(--ink-soft); line-height: 1.7; overflow-x: auto; }
+.code-card .k { color: var(--gold-deep); }
+.code-card .s { color: var(--signal); }
+.code-card .c { color: var(--ink-faint); }
+
+/* stack-style maintenance rows */
+.mstack { display: flex; flex-direction: column; gap: 12px; }
+.mrow { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in oklab, var(--bg-paper-solid), transparent 40%); }
+.mrow-name { font-family: 'Barlow', sans-serif; font-weight: 500; font-size: 0.92rem; color: var(--ink); }
+.mrow-name .sub { display: block; font-size: 0.76rem; color: var(--ink-faint); font-weight: 400; margin-top: 2px; line-height: 1.4; }
+.mrow-status { font-family: 'Barlow', monospace; font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--signal); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.mrow-status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
+
+/* who-for strip (reuses op-list pattern) */
+.who-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.who-card { border: 1px solid var(--line); border-radius: 14px; padding: 24px; background: var(--bg-paper); text-align: left; backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); box-shadow: var(--shadow-sm); }
+.who-card .who-icon { font-size: 1.4rem; margin-bottom: 14px; color: var(--gold); }
+.who-card h4 { font-family: 'Barlow', sans-serif; font-weight: 600; font-size: 0.96rem; margin-bottom: 6px; color: var(--ink); }
+.who-card p { font-size: 0.82rem; color: var(--ink-dim); line-height: 1.5; }
+
+/* ============ PRICING ============ */
+.pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: stretch; }
+.price-card { display: flex; flex-direction: column; padding: 30px 26px; }
+.price-card.featured { border-color: var(--gold); position: relative; }
+.price-badge {
+  position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+  background: var(--gold); color: #fff; font-family: 'Barlow', monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 5px 16px; border-radius: 100px;
+}
+.tier-name { font-family: 'Barlow', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-faint); font-weight: 500; }
+.tier-price { font-family: 'Barlow Condensed', serif; font-size: 2.6rem; font-weight: 500; margin: 12px 0 4px; color: var(--ink); }
+.tier-price small { font-family: 'Barlow', sans-serif; font-size: 0.95rem; font-weight: 400; color: var(--ink-dim); }
+.tier-desc { font-size: 0.86rem; color: var(--ink-dim); margin-bottom: 22px; min-height: 38px; line-height: 1.5; }
+.tier-features { list-style: none; margin: 0 0 26px; padding: 0; flex-grow: 1; display: flex; flex-direction: column; gap: 11px; }
+.tier-features li { font-size: 0.84rem; color: var(--ink-dim); display: flex; gap: 10px; line-height: 1.4; }
+.tier-features li::before { content: "—"; color: var(--gold); flex-shrink: 0; }
+.pricing-note { text-align: center; color: var(--ink-faint); font-size: 0.8rem; margin-top: 30px; font-family: 'Barlow', monospace; letter-spacing: 0.04em; }
+
+/* ============ FAQ ============ */
+.faq { max-width: 780px; margin: 0 auto; }
+details { border: 1px solid var(--line); border-radius: 14px; background: var(--bg-paper); padding: 18px 22px; margin-bottom: 12px; backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); }
+summary { cursor: pointer; font-family: 'Barlow', sans-serif; font-weight: 600; font-size: 0.98rem; list-style: none; display: flex; justify-content: space-between; align-items: center; color: var(--ink); }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; color: var(--gold); font-size: 1.3rem; font-weight: 400; }
+details[open] summary::after { content: "−"; }
+details p { color: var(--ink-dim); font-size: 0.9rem; margin: 14px 0 2px; line-height: 1.6; }
+details code { color: var(--gold-deep); background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 0.82rem; }
+
+/* ============ CLOSING / MANIFESTO ============ */
+.closing { text-align: center; padding: 150px 0; border-top: 1px solid var(--line); }
+.closing h2 { font-size: clamp(1.9rem, 3.4vw, 2.7rem); max-width: 920px; margin: 0 auto; text-wrap: balance; }
+.closing h2 .gold { color: var(--gold); }
+.closing .stmt { font-size: 1.03rem; color: var(--ink-dim); max-width: 620px; margin: 32px auto; line-height: 1.65; }
+.closing-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 660px; margin: 46px auto; text-align: left; }
+.closing-pair .card { padding: 20px 22px; }
+.closing-pair .k { font-family: 'Barlow', monospace; font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin-bottom: 8px; }
+.closing-pair .v { font-family: 'Barlow Condensed', serif; font-size: 1.16rem; line-height: 1.3; color: var(--ink); }
+
+/* ============ FOOTER ============ */
+footer { border-top: 1px solid var(--line); padding: 50px 0 40px; background: var(--bg-alt); }
+.foot-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 40px; }
+.foot-brand .tag { font-family: 'Barlow', monospace; font-size: 0.66rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); margin-top: 10px; max-width: 280px; line-height: 1.6; }
+.foot-col h5 { font-family: 'Barlow', monospace; font-size: 0.62rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; margin-bottom: 14px; }
+.foot-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.foot-col a { color: var(--ink-soft); font-size: 0.94rem; transition: color 0.2s; }
+.foot-col a:hover { color: var(--gold); }
+.foot-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-top: 24px; border-top: 1px solid var(--line); font-family: 'Barlow', monospace; font-size: 0.62rem; letter-spacing: 0.1em; color: var(--ink-faint); }
+
+/* ============ REDUCED MOTION ============ */
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .pulse { animation: none; } }
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 920px) {
+  .nav-mid { display: none; }
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .feat, .feat.reverse > :first-child { grid-template-columns: 1fr; order: unset; gap: 32px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .who-grid { grid-template-columns: 1fr 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; max-width: 440px; margin: 0 auto; }
+  .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+  .closing-pair { grid-template-columns: 1fr; }
+  section { padding: 80px 0; }
+  .wrap, .wrap-tight { padding: 0 24px; }
+  .op-strip-inner { gap: 14px; }
+  .op-list { gap: 18px; font-size: 0.86rem; }
+}
+@media (max-width: 600px) {
+  .stats-grid, .who-grid { grid-template-columns: 1fr; }
+  .hero { min-height: auto; padding-top: 70px; }
+}
 </style>
 </head>
 <body>
 
-<header class="nav">
+<div class="bg-fill"></div>
+<div class="bg-grain"></div>
+<div class="bg-mesh"></div>
+
+<!-- ============ NAV ============ -->
+<nav class="top">
   <div class="nav-inner">
-    <div class="brand"><span class="brand-mark">§</span> MOTaxIntelligence</div>
-    <nav class="nav-links">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="16" cy="16" r="10.5" stroke="var(--gold)" stroke-width="1.6"/>
+          <path d="M11 10.5c3-1.6 7-1.6 10 0M11 21.5c3 1.6 7 1.6 10 0" stroke="var(--gold)" stroke-width="1.3" stroke-linecap="round"/>
+          <path d="M12 15h8M12 17h8" stroke="var(--gold)" stroke-width="1.1" opacity="0.7"/>
+          <circle cx="16" cy="16" r="1.4" fill="var(--gold)"/>
+        </svg>
+      </span>
+      <span class="brand-text">MOTax<span class="co">Intelligence</span></span>
+    </a>
+    <div class="nav-mid">
       <a href="#problem">Why it's different</a>
       <a href="#how-it-works">How it works</a>
       <a href="#entities">Entity coverage</a>
       <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
-    </nav>
-    <a class="nav-cta" href="#pricing">Get API access</a>
-  </div>
-</header>
-
-<section class="hero">
-  <div class="wrap">
-    <span class="eyebrow">Built for the Elle / Atlas agent stack</span>
-    <h1>Tax retrieval that never<br><span class="accent">paraphrases the law.</span></h1>
-    <p class="subhead">
-      MOTaxIntelligence serves Missouri tax statutes to AI agents with zero citation drift.
-      Every answer resolves to a whole, verbatim section — checksummed, dated, and
-      cited to the letter. No contextual rewrite. No hallucination surface.
-    </p>
-    <div class="hero-actions">
-      <a class="btn btn-primary" href="#pricing">Get API access</a>
-      <a class="btn btn-secondary" href="#how-it-works">See the architecture</a>
     </div>
-    <div class="proof-strip">
-      <div class="proof-item"><div class="proof-num">100%</div><div class="proof-label">of the corpus passes the no-drift invariant</div></div>
-      <div class="proof-item"><div class="proof-num">0</div><div class="proof-label">LLM rewrites in the retrieval path</div></div>
-      <div class="proof-item"><div class="proof-num">4</div><div class="proof-label">entity classes: single-member LLC, multi-member LLC, S-corp, general</div></div>
-      <div class="proof-item"><div class="proof-num">weekly</div><div class="proof-label">automated integrity + source-drift audit</div></div>
+    <div class="nav-right">
+      <a class="btn btn-ghost btn-sm" href="#faq">Read the docs</a>
+      <a class="btn btn-gold btn-sm" href="#pricing">Get API access <span class="arrow">→</span></a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="hero-q">
+        <div class="hero-eyebrow-row">
+          <span class="eyebrow">Built for the Elle / Atlas agent stack</span>
+          <span class="hero-status"><span class="pulse"></span> Corpus verified</span>
+        </div>
+        <h1>Tax retrieval that never <span class="soft">paraphrases the law.</span></h1>
+        <p class="sub">MOTaxIntelligence serves Missouri tax statutes to AI agents with zero citation drift. Every answer resolves to a whole, verbatim section — <strong>checksummed, dated, and cited to the letter.</strong></p>
+        <div class="hero-actions">
+          <a class="btn btn-gold" href="#pricing">Get API access <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="#how-it-works">See the architecture</a>
+          <span class="micro">No paraphrase · no drift · cite to the letter</span>
+        </div>
+      </div>
+
+      <!-- HERO LIVE CARD -->
+      <aside class="hero-data" aria-label="Corpus integrity status">
+        <div class="hd-head">
+          <span class="hd-app"><span class="pulse" style="width:6px;height:6px;"></span> MOTax · Live</span>
+          <span class="hd-live">Checked weekly + on demand</span>
+        </div>
+        <div class="hd-title">Corpus integrity — no-drift invariant</div>
+        <div class="hd-big">100%<span class="delta">▲ passing</span></div>
+        <div class="hd-sub"><code style="font-family:'Barlow',monospace;">parent.body.slice(start,end) === child.text</code>, checked across the whole corpus.</div>
+
+        <div class="hd-row">
+          <div class="hd-cell">
+            <div class="k">Entity classes</div>
+            <div class="v">4</div>
+          </div>
+          <div class="hd-cell">
+            <div class="k">LLM rewrites in read path</div>
+            <div class="v good">0</div>
+          </div>
+        </div>
+        <div class="hd-foot">
+          <span>RSMo Ch. 143 · 347 · 351 + DOR guidance</span>
+          <span class="src">Cite to the letter</span>
+        </div>
+      </aside>
+    </div>
+
+    <div class="op-strip">
+      <div class="op-strip-inner">
+        <span class="op-label">Built for citation-critical retrieval</span>
+        <div class="op-list">
+          <span><span class="dot"></span> Tax-prep platforms</span>
+          <span><span class="dot"></span> State-focused legal-tech</span>
+          <span><span class="dot"></span> Accounting &amp; CPA tooling</span>
+          <span><span class="dot"></span> AI agent platforms</span>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="problem">
+<!-- ============ STATS DECK ============ -->
+<section class="stats">
   <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">The problem</div>
-      <h2>Fuzzy RAG can't promise a citation is real</h2>
-      <p>General-purpose corpus retrieval is tuned for recall over prose. Point it at statute
-        text and it inherits three failure modes that are fine for a blog post and disqualifying
-        for a tax filing.</p>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="v">100%</div>
+        <div class="k">No-drift invariant</div>
+        <div class="d">Of the corpus passes the parent/child offset check, every time it's re-verified.</div>
+      </div>
+      <div class="stat-card">
+        <div class="v">0</div>
+        <div class="k">LLM rewrites</div>
+        <div class="d">Nowhere in the retrieval path — embed, vector search, parent lookup. Nothing else.</div>
+      </div>
+      <div class="stat-card">
+        <div class="v">4</div>
+        <div class="k">Entity classes</div>
+        <div class="d">Single-member LLC, multi-member LLC, S-corp, and general — curated, not guessed.</div>
+      </div>
+      <div class="stat-card">
+        <div class="v">Weekly</div>
+        <div class="k">Integrity + drift audit</div>
+        <div class="d">Automated re-check against live D1 plus a source-checksum comparison.</div>
+      </div>
     </div>
-    <div class="compare">
-      <div class="compare-card bad">
-        <div class="compare-title"><span class="dot"></span>General-purpose corpus retrieval</div>
-        <ul>
+  </div>
+</section>
+
+<!-- ============ PROBLEM / SOLUTION ============ -->
+<section id="problem">
+  <div class="wrap-tight">
+    <div class="sec-head">
+      <span class="num">The problem</span>
+      <h2>Fuzzy RAG can't promise a citation is real</h2>
+      <p class="body-txt">General-purpose corpus retrieval is tuned for recall over prose. Point it at statute text and it inherits three failure modes that are fine for a blog post and disqualifying for a tax filing.</p>
+      <span class="truth">One system. One citation. No drift.</span>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="feat">
+      <div class="card tint-bad">
+        <div class="card-title bad"><span class="dot"></span>General-purpose corpus retrieval</div>
+        <ul class="check-list">
           <li>Chunker rebuilds text with <code>words.join(' ')</code> — any whitespace change breaks the source match</li>
           <li>Chunks are relocated with <code>indexOf(chunkText)</code>, silently falling back to the top of the document on a miss</li>
           <li><code>start_char</code> / <code>end_char</code> are placeholders, not verified offsets</li>
           <li>The contextual embedding step runs an LLM paraphrase between the query and the statute — a hallucination surface you can't cite</li>
         </ul>
       </div>
-      <div class="compare-card good">
-        <div class="compare-title"><span class="dot"></span>MOTaxIntelligence</div>
-        <ul>
+      <div class="card tint-good">
+        <div class="card-title good"><span class="dot"></span>MOTaxIntelligence</div>
+        <ul class="check-list">
           <li>Parent = the whole statute section, stored <strong>verbatim</strong> — the only thing ever cited</li>
           <li>Children are embedding windows carrying <code>parent_id</code> + real, invariant-checked offsets</li>
           <li>Read path resolves child → parent by foreign key, never by text search — a mid-section hit still returns the exact whole section</li>
-          <li>A deterministic breadcrumb (<code>RSMo Chapter 143 § 143.436 (2)</code>) enriches the embedding — never an LLM sentence between a query and a statute</li>
+          <li>A deterministic breadcrumb (<code>RSMo Ch. 143 § 143.436 (2)</code>) enriches the embedding — never an LLM sentence between a query and a statute</li>
         </ul>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section section-alt" id="how-it-works">
+<!-- ============ 01 HOW IT WORKS ============ -->
+<section id="how-it-works">
   <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">How it works</div>
-      <h2>A corpus only ships if it's perfect</h2>
-      <p>Each stage refuses to proceed on any defect. There is no partial, "mostly right" corpus —
-        the pipeline fails loudly instead.</p>
-    </div>
-    <div class="pipeline">
-      <div class="pipe-step">
-        <div class="pipe-num">01 · fetch</div>
-        <h3>Fetch</h3>
-        <p>Pulls raw statute HTML from the Missouri Revisor of Statutes, a Justia mirror, and DOR guidance pages. Archives provenance and a raw-byte checksum with every page.</p>
+    <div class="feat">
+      <div class="feat-copy">
+        <span class="num">01 — How it works</span>
+        <h3>A corpus only ships if it's <em>perfect.</em></h3>
+        <p class="body-txt">Each stage refuses to proceed on any defect. There is no partial, "mostly right" corpus — the pipeline fails loudly instead, before anything reaches an agent.</p>
+        <span class="truth">Fetch → build → verify → ingest. Nothing skips a step.</span>
       </div>
-      <div class="pipe-step">
-        <div class="pipe-num">02 · build</div>
-        <h3>Build corpus</h3>
-        <p>Parses each section to a verbatim body, classifies it against a human-authored entity map, and chunks parent/child with exact character offsets.</p>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">03 · verify</div>
-        <h3>Verify</h3>
-        <p>The flawlessness gate: exits non-zero on any drift, coverage gap, untagged section, or checksum mismatch. Nothing ships past this line broken.</p>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">04 · ingest</div>
-        <h3>Ingest</h3>
-        <p>Embeds every child in-Worker with the same bge-large-en-v1.5 model Atlas uses, and writes parents + children into D1 and Vectorize together.</p>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Pipeline</span>
+          <span class="card-meta">Fails loudly, not gracefully</span>
+        </div>
+        <div class="pipe-list">
+          <div class="pipe-item">
+            <div class="pipe-badge">01</div>
+            <div><h4>Fetch</h4><p>Pulls raw statute HTML from the Missouri Revisor of Statutes, a Justia mirror, and DOR guidance pages, archiving provenance and a raw-byte checksum with every page.</p></div>
+          </div>
+          <div class="pipe-item">
+            <div class="pipe-badge">02</div>
+            <div><h4>Build corpus</h4><p>Parses each section to a verbatim body, classifies it against a human-authored entity map, and chunks parent/child with exact character offsets.</p></div>
+          </div>
+          <div class="pipe-item">
+            <div class="pipe-badge">03</div>
+            <div><h4>Verify</h4><p>The flawlessness gate — exits non-zero on any drift, coverage gap, untagged section, or checksum mismatch.</p></div>
+          </div>
+          <div class="pipe-item">
+            <div class="pipe-badge">04</div>
+            <div><h4>Ingest</h4><p>Embeds every child in-Worker with the same bge-large-en-v1.5 model Atlas uses, writing parents + children into D1 and Vectorize together.</p></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="entities">
+<!-- ============ 02 ENTITY COVERAGE ============ -->
+<section id="entities">
   <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">Entity-aware from the ground up</div>
-      <h2>Filter by the structure that actually governs treatment</h2>
-      <p>Single-member LLCs, multi-member LLCs, and S-corps are taxed under different sections
-        of Missouri law. MOTaxIntelligence tags every section against a curated entity map —
-        keyword heuristics only ever <em>suggest</em>; nothing auto-classifies.</p>
+    <div class="feat reverse">
+      <div class="feat-copy">
+        <span class="num">02 — Entity coverage</span>
+        <h3>Filter by the structure that <em>actually governs treatment.</em></h3>
+        <p class="body-txt">Single-member LLCs, multi-member LLCs, and S-corps are taxed under different sections of Missouri law. Every section is tagged against a curated entity map — <strong>keyword heuristics only ever suggest; nothing auto-classifies.</strong></p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Entity classes</span>
+          <span class="card-meta">Human-curated map</span>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Class</th><th>Default MO treatment</th><th>Return</th></tr></thead>
+          <tbody>
+            <tr><td><code>llc_single</code></td><td>Disregarded → owner's return</td><td>MO-1040</td></tr>
+            <tr><td><code>llc_multi</code></td><td>Partnership</td><td>MO-1065</td></tr>
+            <tr><td><code>s_corp</code></td><td>S corporation</td><td>MO-1120S</td></tr>
+            <tr><td><code>general</code></td><td>Applies across all classes</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-    <table class="entity-table">
-      <thead>
-        <tr><th>Entity class</th><th>Default MO treatment</th><th>Return form</th><th>Typical caller</th></tr>
-      </thead>
-      <tbody>
-        <tr><td class="mono">llc_single_member</td><td>Disregarded → owner's return</td><td>MO-1040</td><td>Solo-operator tooling</td></tr>
-        <tr><td class="mono">llc_multi_member</td><td>Partnership</td><td>MO-1065</td><td>Atlas</td></tr>
-        <tr><td class="mono">s_corp</td><td>S corporation</td><td>MO-1120S</td><td>Multi-unit / payroll platforms</td></tr>
-        <tr><td class="mono">general</td><td>Applies across all classes</td><td>—</td><td>Every caller (surfaces under any filter)</td></tr>
-      </tbody>
-    </table>
   </div>
 </section>
 
-<section class="section section-alt">
+<!-- ============ 03 QUERY SAMPLE ============ -->
+<section>
   <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">One request, everything you need to cite it</div>
-      <h2>A single <code style="font-family:var(--mono); color:var(--accent-bright);">/query</code> call, fully attributable</h2>
-      <p>Every hit returns the matched section verbatim, plus exactly what a downstream agent needs to defend the citation.</p>
-    </div>
-    <div class="code-sample">
-<span class="c">// POST /query</span>
-{
-  <span class="k">"q"</span>: <span class="s">"Can an S corp elect the pass-through entity tax?"</span>,
-  <span class="k">"entity"</span>: <span class="s">"s_corp"</span>,
-  <span class="k">"top_k"</span>: 3
+    <div class="feat">
+      <div class="feat-copy">
+        <span class="num">03 — One request, fully attributable</span>
+        <h3>A single <em>/query</em> call returns everything needed to cite it.</h3>
+        <p class="body-txt">Every hit returns the matched section verbatim, plus exactly what a downstream agent needs to defend the citation — source, checksum, and the spans that scored.</p>
+        <span class="truth">Not a summary. The statute itself.</span>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">POST /query</span>
+          <span class="card-meta">entity-filtered</span>
+        </div>
+        <div class="code-card">
+<span class="c">// request</span><br>
+{<br>
+&nbsp;&nbsp;<span class="k">"q"</span>: <span class="s">"Can an S corp elect the pass-through entity tax?"</span>,<br>
+&nbsp;&nbsp;<span class="k">"entity"</span>: <span class="s">"s_corp"</span>,<br>
+&nbsp;&nbsp;<span class="k">"top_k"</span>: 3<br>
+}<br>
+<br>
+<span class="c">// response, per hit</span><br>
+{<br>
+&nbsp;&nbsp;<span class="k">"section"</span>: <span class="s">"§ 143.436 ..."</span>, <span class="c">// verbatim</span><br>
+&nbsp;&nbsp;<span class="k">"citation"</span>: <span class="s">"RSMo Ch. 143 § 143.436 (2)"</span>,<br>
+&nbsp;&nbsp;<span class="k">"source_url"</span>: <span class="s">"revisor.mo.gov/..."</span>,<br>
+&nbsp;&nbsp;<span class="k">"checksum"</span>: <span class="s">"sha256:..."</span>,<br>
+&nbsp;&nbsp;<span class="k">"entity_tags"</span>: [<span class="s">"s_corp"</span>, <span class="s">"general"</span>],<br>
+&nbsp;&nbsp;<span class="k">"matched_spans"</span>: [[142, 289]]<br>
 }
-
-<span class="c">// → response, per hit</span>
-{
-  <span class="k">"section"</span>: <span class="s">"§ 143.436 ..."</span>,     <span class="c">// verbatim, whole section</span>
-  <span class="k">"citation"</span>: <span class="s">"RSMo Ch. 143 § 143.436 (2)"</span>,
-  <span class="k">"source_url"</span>: <span class="s">"revisor.mo.gov/..."</span>,
-  <span class="k">"retrieved_at"</span>: <span class="s">"2026-07-30T00:00:00Z"</span>,
-  <span class="k">"checksum"</span>: <span class="s">"sha256:..."</span>,
-  <span class="k">"entity_tags"</span>: [<span class="s">"s_corp"</span>, <span class="s">"general"</span>],
-  <span class="k">"matched_spans"</span>: [[142, 289]]
-}
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">Operational discipline</div>
-      <h2>Trust isn't a claim — it's a cron job</h2>
-      <p>A corpus that was correct at ingest can still drift. Two maintenance passes run
-        weekly and on demand, and log every result — even a clean pass — so a silently
-        broken check is impossible.</p>
-    </div>
-    <div class="features">
-      <div class="feature-card">
-        <div class="feature-icon">✓</div>
-        <h3>Integrity re-check</h3>
-        <p>Re-verifies the parent/child no-drift invariant against what's actually stored in D1 right now — catching a partial ingest or write bug the local build never saw.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">↻</div>
-        <h3>Source-drift detection</h3>
-        <p>Re-fetches every plain-fetchable source already in the corpus and compares a fresh checksum against the one recorded at fetch time. A mismatch means the law changed since the last pull.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">▤</div>
-        <h3>Append-only audit log</h3>
-        <p>Every maintenance pass — clean or not — writes to <code style="font-family:var(--mono); color:var(--accent-bright);">ingestion_event</code>. Row counts, retrieval date range, and recent events are all readable via a stats endpoint.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">⊘</div>
-        <h3>No silent auto-reingest</h3>
-        <p>Drift detection only ever detects and logs. Writing a new body always goes back through the local build → verify pipeline, preserving "a corpus only ships if it's perfect."</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">⇄</div>
-        <h3>Drop-in for Atlas</h3>
-        <p>Same embedding model, same 1024 dimensions as Atlas's own corpus index. Bind this Worker as a service and query it directly — no re-embedding, no format translation.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon">⛭</div>
-        <h3>No LLM in the read path</h3>
-        <p>Retrieval is embed → vector search → parent lookup. Nothing rewrites, summarizes, or paraphrases the statute between your query and the answer.</p>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section section-alt">
+<!-- ============ 04 OPERATIONAL DISCIPLINE ============ -->
+<section>
   <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">Who it's built for</div>
+    <div class="feat reverse">
+      <div class="feat-copy">
+        <span class="num">04 — Operational discipline</span>
+        <h3>Trust isn't a claim. <em>It's a cron job.</em></h3>
+        <p class="body-txt">A corpus that was correct at ingest can still drift. Two maintenance passes run weekly and on demand, and log every result — even a clean pass — so a silently broken check is impossible.</p>
+        <a class="btn btn-ghost" href="#faq">How drift is handled <span class="arrow">→</span></a>
+      </div>
+      <div class="mstack">
+        <div class="mrow">
+          <div class="mrow-name">Integrity re-check<span class="sub">Re-verifies the no-drift invariant against live D1</span></div>
+          <span class="mrow-status"><span class="dot"></span> Weekly + on demand</span>
+        </div>
+        <div class="mrow">
+          <div class="mrow-name">Source-drift detection<span class="sub">Fresh checksum vs. the one recorded at fetch time</span></div>
+          <span class="mrow-status"><span class="dot"></span> Weekly + on demand</span>
+        </div>
+        <div class="mrow">
+          <div class="mrow-name">Append-only audit log<span class="sub">Every pass logged to <code style="color:var(--gold);font-family:'Barlow',monospace;">ingestion_event</code>, clean or not</span></div>
+          <span class="mrow-status"><span class="dot"></span> Always on</span>
+        </div>
+        <div class="mrow">
+          <div class="mrow-name">No silent auto-reingest<span class="sub">Drift is only ever detected + logged — a new body always goes through build → verify</span></div>
+          <span class="mrow-status"><span class="dot"></span> By design</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHO IT'S FOR ============ -->
+<section>
+  <div class="wrap-tight">
+    <div class="sec-head">
+      <span class="num">Who it's built for</span>
       <h2>Anywhere a wrong citation is a real problem</h2>
     </div>
+  </div>
+  <div class="wrap">
     <div class="who-grid">
-      <div class="who-card"><div class="who-icon">🧾</div><h4>Tax-prep &amp; filing platforms</h4><p>Cite the actual statute behind an estimate, not a summary of it.</p></div>
-      <div class="who-card"><div class="who-icon">🏛️</div><h4>State-focused legal-tech</h4><p>Ship compliance features that hold up to a source-by-source audit.</p></div>
-      <div class="who-card"><div class="who-icon">📊</div><h4>Accounting &amp; CPA tooling</h4><p>Give staff a defensible citation trail instead of an LLM's memory of the code.</p></div>
-      <div class="who-card"><div class="who-icon">🤖</div><h4>AI agent platforms</h4><p>Drop in citation-safe retrieval anywhere an agent currently guesses at tax law — Elle and Atlas run on this today.</p></div>
+      <div class="who-card"><div class="who-icon">◆</div><h4>Tax-prep &amp; filing platforms</h4><p>Cite the actual statute behind an estimate, not a summary of it.</p></div>
+      <div class="who-card"><div class="who-icon">◆</div><h4>State-focused legal-tech</h4><p>Ship compliance features that hold up to a source-by-source audit.</p></div>
+      <div class="who-card"><div class="who-icon">◆</div><h4>Accounting &amp; CPA tooling</h4><p>Give staff a defensible citation trail instead of an LLM's memory of the code.</p></div>
+      <div class="who-card"><div class="who-icon">◆</div><h4>AI agent platforms</h4><p>Drop in citation-safe retrieval anywhere an agent currently guesses at tax law — Elle and Atlas run on this today.</p></div>
     </div>
   </div>
 </section>
 
-<section class="section" id="pricing">
-  <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">Pricing</div>
+<!-- ============ PRICING ============ -->
+<section id="pricing">
+  <div class="wrap-tight">
+    <div class="sec-head">
+      <span class="num">Pricing</span>
       <h2>Three tiers, priced by query volume</h2>
-      <p>Every tier gets the same zero-drift guarantee. Higher tiers add volume, dedicated
-        infrastructure, and coverage beyond Missouri.</p>
+      <p class="body-txt">Every tier gets the same zero-drift guarantee. Higher tiers add volume, dedicated infrastructure, and coverage beyond Missouri.</p>
     </div>
+  </div>
+  <div class="wrap">
     <div class="pricing-grid">
-      <div class="price-card">
+      <div class="card price-card">
         <div class="tier-name">Developer</div>
         <div class="tier-price">Free</div>
         <div class="tier-desc">Evaluate the API and build against real Missouri statute data.</div>
@@ -464,9 +657,9 @@
           <li>Shared infrastructure</li>
           <li>Community support</li>
         </ul>
-        <a class="tier-btn" href="#faq">Start building</a>
+        <a class="btn btn-ghost" style="justify-content:center;" href="#faq">Start building</a>
       </div>
-      <div class="price-card featured">
+      <div class="card price-card featured">
         <div class="price-badge">Most popular</div>
         <div class="tier-name">Team</div>
         <div class="tier-price">$499<small>/mo</small></div>
@@ -479,9 +672,9 @@
           <li>Email support, 1-business-day response</li>
           <li>99.9% uptime target</li>
         </ul>
-        <a class="tier-btn" href="#faq">Talk to us</a>
+        <a class="btn btn-gold" style="justify-content:center;" href="#faq">Talk to us</a>
       </div>
-      <div class="price-card">
+      <div class="card price-card">
         <div class="tier-name">Enterprise</div>
         <div class="tier-price">Custom</div>
         <div class="tier-desc">Dedicated infrastructure, custom coverage, contractual SLA.</div>
@@ -493,17 +686,18 @@
           <li>Audit-log export &amp; compliance review support</li>
           <li>Dedicated support with contractual SLA</li>
         </ul>
-        <a class="tier-btn" href="#faq">Contact sales</a>
+        <a class="btn btn-ghost" style="justify-content:center;" href="#faq">Contact sales</a>
       </div>
     </div>
     <p class="pricing-note">Missouri is the current corpus. Additional-state coverage is scoped per Enterprise contract — ask what's next.</p>
   </div>
 </section>
 
-<section class="section section-alt" id="faq">
-  <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">FAQ</div>
+<!-- ============ FAQ ============ -->
+<section id="faq">
+  <div class="wrap-tight">
+    <div class="sec-head">
+      <span class="num">FAQ</span>
       <h2>Questions worth asking before you trust a citation</h2>
     </div>
     <div class="faq">
@@ -521,11 +715,11 @@
       </details>
       <details>
         <summary>Can I filter by entity type — LLC vs. S-corp?</summary>
-        <p>Yes. Every request accepts an <code style="font-family:var(--mono);">entity</code> parameter — <code style="font-family:var(--mono);">llc_single</code>, <code style="font-family:var(--mono);">llc_multi</code>, <code style="font-family:var(--mono);">s_corp</code>, or <code style="font-family:var(--mono);">general</code> — resolved against a curated, human-authored entity map, not a keyword guess.</p>
+        <p>Yes. Every request accepts an <code>entity</code> parameter — <code>llc_single</code>, <code>llc_multi</code>, <code>s_corp</code>, or <code>general</code> — resolved against a curated, human-authored entity map, not a keyword guess.</p>
       </details>
       <details>
         <summary>How does this integrate with an existing agent platform?</summary>
-        <p>The recommended path is a Cloudflare Worker service binding — your platform binds this Worker and calls its <code style="font-family:var(--mono);">/query</code> endpoint directly. It shares the same embedding model and vector dimensionality as Atlas's own corpus index, so no re-embedding step is needed if you'd rather query the index directly.</p>
+        <p>The recommended path is a Cloudflare Worker service binding — your platform binds this Worker and calls its <code>/query</code> endpoint directly. It shares the same embedding model and vector dimensionality as Atlas's own corpus index, so no re-embedding step is needed if you'd rather query the index directly.</p>
       </details>
       <details>
         <summary>Is coverage limited to Missouri?</summary>
@@ -535,49 +729,76 @@
   </div>
 </section>
 
-<section class="section">
-  <div class="cta-band">
-    <h2>Stop citing a paraphrase.</h2>
-    <p>Every answer from MOTaxIntelligence traces back to a whole, verbatim, checksummed statute section — not an LLM's memory of one.</p>
-    <div class="hero-actions">
-      <a class="btn btn-primary" href="#pricing">Get API access</a>
-      <a class="btn btn-secondary" href="#how-it-works">Read the architecture docs</a>
+<!-- ============ CLOSING / MANIFESTO ============ -->
+<section class="closing">
+  <div class="wrap-tight">
+    <span class="eyebrow" style="margin-bottom:30px;justify-content:center;">The point</span>
+    <h2>Every citation should trace to something real —</h2>
+    <h2><span class="gold">not an LLM's memory of the law.</span></h2>
+    <p class="stmt">A wrong number is a mistake. A wrong citation is a liability. MOTaxIntelligence exists so an agent never has to choose between fast and defensible.</p>
+
+    <div class="closing-pair">
+      <div class="card">
+        <div class="k">The gap</div>
+        <div class="v">Fuzzy retrieval can't promise a citation is real.</div>
+      </div>
+      <div class="card">
+        <div class="k">MOTaxIntelligence</div>
+        <div class="v">Closes it, structurally.</div>
+      </div>
     </div>
+
+    <a class="btn btn-gold" href="#pricing" style="font-size:0.85rem;padding:18px 42px;">Get API access <span class="arrow">→</span></a>
   </div>
 </section>
 
+<!-- ============ FOOTER ============ -->
 <footer>
   <div class="wrap">
-    <div class="footer-grid">
-      <div class="footer-brand">
-        <div class="brand"><span class="brand-mark">§</span> MOTaxIntelligence</div>
-        <p>Flawless, citable Missouri tax-code retrieval for AI agent platforms. Built for and battle-tested by the Elle/Atlas stack.</p>
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="16" cy="16" r="10.5" stroke="var(--gold)" stroke-width="1.6"/>
+              <path d="M11 10.5c3-1.6 7-1.6 10 0M11 21.5c3 1.6 7 1.6 10 0" stroke="var(--gold)" stroke-width="1.3" stroke-linecap="round"/>
+              <path d="M12 15h8M12 17h8" stroke="var(--gold)" stroke-width="1.1" opacity="0.7"/>
+              <circle cx="16" cy="16" r="1.4" fill="var(--gold)"/>
+            </svg>
+          </span>
+          <span class="brand-text">MOTax<span class="co">Intelligence</span></span>
+        </a>
+        <div class="tag">Flawless, citable Missouri tax-code retrieval — built for and battle-tested by the Elle/Atlas stack.</div>
       </div>
-      <div class="footer-cols">
-        <div class="footer-col">
-          <h5>Product</h5>
-          <a href="#problem">Why it's different</a>
-          <a href="#how-it-works">Architecture</a>
-          <a href="#entities">Entity coverage</a>
-          <a href="#pricing">Pricing</a>
-        </div>
-        <div class="footer-col">
-          <h5>Resources</h5>
-          <a href="../docs/ARCHITECTURE.md">Architecture doc</a>
-          <a href="../docs/RETRIEVAL_CONTRACT.md">Retrieval contract</a>
-          <a href="../docs/SOURCES.md">Sources</a>
-          <a href="../README.md">README</a>
-        </div>
-        <div class="footer-col">
-          <h5>Company</h5>
-          <a href="#faq">FAQ</a>
-          <a href="#pricing">Contact sales</a>
-        </div>
+      <div class="foot-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="#problem">Why it's different</a></li>
+          <li><a href="#how-it-works">Architecture</a></li>
+          <li><a href="#entities">Entity coverage</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Resources</h5>
+        <ul>
+          <li><a href="../docs/ARCHITECTURE.md">Architecture doc</a></li>
+          <li><a href="../docs/RETRIEVAL_CONTRACT.md">Retrieval contract</a></li>
+          <li><a href="../docs/SOURCES.md">Sources</a></li>
+          <li><a href="../README.md">README</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Company</h5>
+        <ul>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#pricing">Contact sales</a></li>
+        </ul>
       </div>
     </div>
-    <div class="footer-bottom">
-      <span>© 2026 MOTaxIntelligence. Statute data sourced from the Missouri Revisor of Statutes, DOR guidance, and Justia.</span>
-      <span>Not a substitute for advice from a licensed CPA or attorney.</span>
+    <div class="foot-bottom">
+      <span>© 2026 MOTaxIntelligence · statute data sourced from the Missouri Revisor of Statutes, DOR guidance, and Justia</span>
+      <span>Not a substitute for advice from a licensed CPA or attorney</span>
     </div>
   </div>
 </footer>
