@@ -1,0 +1,31 @@
+name = "mo-tax"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI — same binding + model (bge-large-en-v1.5) as Elle, so vectors
+# land in the same 1024-dim space Atlas already queries.
+[ai]
+binding = "AI"
+
+# Dedicated vector index for the tax corpus. Create it once:
+#   wrangler vectorize create mo-tax-vectors --dimensions=1024 --metric=cosine
+# Metadata indexes needed for entity filtering + the parent FK read path:
+#   wrangler vectorize create-metadata-index mo-tax-vectors --property-name=parent_id     --type=string
+#   wrangler vectorize create-metadata-index mo-tax-vectors --property-name=ent_llc_single --type=number
+#   wrangler vectorize create-metadata-index mo-tax-vectors --property-name=ent_llc_multi  --type=number
+#   wrangler vectorize create-metadata-index mo-tax-vectors --property-name=ent_s_corp     --type=number
+#   wrangler vectorize create-metadata-index mo-tax-vectors --property-name=ent_general    --type=number
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "mo-tax-vectors"
+
+# Canonical verbatim statute store. Create it once and paste the id:
+#   wrangler d1 create mo-tax
+[[d1_databases]]
+binding = "DB"
+database_name = "mo-tax"
+database_id = "REPLACE_WITH_D1_ID"
+
+# TAX_SERVICE_KEY guards /admin/ingest. Set it as a secret, never commit it:
+#   wrangler secret put TAX_SERVICE_KEY

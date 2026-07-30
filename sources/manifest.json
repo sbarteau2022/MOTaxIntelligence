@@ -1,0 +1,65 @@
+{
+  "_comment": "Source-of-truth for what to fetch and how to parse it. Selectors are tuned against a live sample the first time you run scripts/fetch.mjs (it saves raw HTML to data/raw/ for exactly this). Nothing here is guessed at runtime — the fetcher and parser read only this file.",
+  "version": 1,
+  "corpus_id": "mo-tax",
+  "statute_year": "2025",
+  "sources": {
+    "revisor": {
+      "label": "Missouri Revisor of Statutes (official)",
+      "authority": "primary",
+      "engine": "playwright",
+      "_engine_note": "revisor.mo.gov is bot-protected (returns 403 to plain fetch / cloud IPs). Playwright drives the pre-installed Chromium and defeats it. Fall back to the 'justia' source if a section 403s repeatedly.",
+      "chapterIndexUrl": "https://revisor.mo.gov/main/OneChapter.aspx?chapter={chapter}",
+      "sectionUrl": "https://revisor.mo.gov/main/OneSection.aspx?section={section}",
+      "sectionLinkPattern": "OneSection\\.aspx\\?section=([0-9]+\\.[0-9]+)",
+      "bodySelectors": ["#bodyContent", ".sectionContent", ".chapterView", "#content"],
+      "catchlineSelectors": [".sectionHeading", "h2", "h3"],
+      "dropSelectors": ["script", "style", "noscript"],
+      "minBodyChars": 60,
+      "rateLimitMs": 2500
+    },
+    "justia": {
+      "label": "Justia US Codes (mirror, clean HTML)",
+      "authority": "fallback",
+      "engine": "fetch",
+      "chapterIndexUrl": "https://law.justia.com/codes/missouri/title-x/chapter-{chapter}/",
+      "sectionUrl": "https://law.justia.com/codes/missouri/{title_slug}/chapter-{chapter}/section-{section_slug}/",
+      "sectionLinkPattern": "/section-([0-9]+-[0-9]+)/",
+      "bodySelectors": [".codes-content", "#codes-content", "article"],
+      "catchlineSelectors": ["h1"],
+      "dropSelectors": ["script", "style", "noscript", "aside"],
+      "minBodyChars": 60,
+      "rateLimitMs": 1500
+    }
+  },
+  "chapters": [
+    {
+      "chapter": "143",
+      "title_slug": "title-x-taxation-and-revenue",
+      "label": "Income Tax",
+      "note": "Core. Individual + fiduciary + corporate income tax, S-corp treatment (143.471), and the SALT Parity / pass-through entity election (143.436).",
+      "sections": "discover"
+    },
+    {
+      "chapter": "347",
+      "title_slug": "title-xxiii-corporations-associations-and-partnerships",
+      "label": "Missouri Limited Liability Company Act",
+      "note": "Formation/governance of LLCs (single- and multi-member).",
+      "sections": "discover"
+    },
+    {
+      "chapter": "351",
+      "title_slug": "title-xxiii-corporations-associations-and-partnerships",
+      "label": "General and Business Corporation Law",
+      "note": "Corporate law underlying S-corp entities.",
+      "sections": "discover"
+    }
+  ],
+  "supplemental": {
+    "_comment": "DOR guidance/forms are HTML/PDF, not statute. Ingested as separate parents with authority='guidance' so they never outrank statute in citation. Statute is the letter of the law; these explain administration.",
+    "pages": [
+      { "id": "dor-salt-parity-faq", "entity": ["s_corp", "llc_multi_member"], "url": "https://dor.mo.gov/faq/taxation/business/salt-parity-act.html", "engine": "fetch" },
+      { "id": "dor-pte-faq", "entity": ["s_corp", "llc_multi_member"], "url": "https://dor.mo.gov/faq/taxation/business/entity-tax.html", "engine": "fetch" }
+    ]
+  }
+}
