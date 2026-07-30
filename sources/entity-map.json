@@ -17,5 +17,6 @@
     { "chapter": "143", "from": "143.005", "to": "143.999", "tags": ["general"], "note": "Income tax base/rate/admin — applies across entity classes unless a section above overrides." },
     { "chapter": "347", "from": "347.010", "to": "347.999", "tags": ["llc_single_member", "llc_multi_member"], "note": "Missouri LLC Act governs both single- and multi-member LLCs." },
     { "chapter": "351", "from": "351.010", "to": "351.999", "tags": ["s_corp", "general"], "note": "General/business corporation law underlying S-corp entities." }
-  ]
+  ],
+  "_regulations_note": "12 CSR 10 (chapter='regulations' in classify() calls -- see sources/manifest.json's `regulations` block) has NO range/exact rule here yet, by design: build-corpus.mjs reports every fetched division as UNTAGGED until it's actually reviewed and a rule is added, same discipline as an unreviewed statute section. Do not add a blanket 'general' range for chapter='regulations' without reading the actual division text first -- regulations carry binding administrative detail statute doesn't, so a wrong default tag is worse here than for a statute base-rate provision."
 }

@@ -27,5 +27,15 @@ binding = "DB"
 database_name = "mo-tax"
 database_id = "REPLACE_WITH_D1_ID"
 
-# TAX_SERVICE_KEY guards /admin/ingest. Set it as a secret, never commit it:
+# TAX_SERVICE_KEY guards /admin/ingest, /admin/verify, /admin/stats. Set it as
+# a secret, never commit it:
 #   wrangler secret put TAX_SERVICE_KEY
+
+# Weekly database-management pass: re-checks the parent/child invariant
+# against what's actually in D1, and re-fetches every plain-fetchable source
+# (justia mirror + DOR guidance pages) to detect drift against the checksum
+# recorded at the last local pull. Logs to ingestion_event either way -- see
+# src/db-management.ts and the scheduled() handler in src/index.ts. Same
+# result is available on demand via POST /admin/verify.
+[triggers]
+crons = ["0 13 * * 1"]  # Monday 13:00 UTC (08:00 America/Chicago) -- off business hours

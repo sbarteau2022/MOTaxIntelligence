@@ -56,10 +56,39 @@
     }
   ],
   "supplemental": {
-    "_comment": "DOR guidance/forms are HTML/PDF, not statute. Ingested as separate parents with authority='guidance' so they never outrank statute in citation. Statute is the letter of the law; these explain administration.",
+    "_comment": "DOR guidance/forms are HTML/PDF, not statute. Ingested as separate parents with authority='guidance' so they never outrank statute in citation. Statute is the letter of the law; these explain administration. entity[] here is the curated tag set directly (these pages are few and hand-reviewed, so they skip the classify()/entity-map.json range machinery that chapters use) -- never inferred.",
     "pages": [
-      { "id": "dor-salt-parity-faq", "entity": ["s_corp", "llc_multi_member"], "url": "https://dor.mo.gov/faq/taxation/business/salt-parity-act.html", "engine": "fetch" },
-      { "id": "dor-pte-faq", "entity": ["s_corp", "llc_multi_member"], "url": "https://dor.mo.gov/faq/taxation/business/entity-tax.html", "engine": "fetch" }
+      {
+        "id": "dor-salt-parity-faq",
+        "label": "DOR -- SALT Parity Act FAQs",
+        "entity": ["s_corp", "llc_multi_member"],
+        "url": "https://dor.mo.gov/faq/taxation/business/salt-parity-act.html",
+        "engine": "fetch",
+        "bodySelectors": ["main", "#main-content", "article", "#content"],
+        "dropSelectors": ["script", "style", "noscript", "header", "nav", "footer"],
+        "minBodyChars": 100
+      },
+      {
+        "id": "dor-pte-faq",
+        "label": "DOR -- Pass-Through Entity Tax FAQs",
+        "entity": ["s_corp", "llc_multi_member"],
+        "url": "https://dor.mo.gov/faq/taxation/business/entity-tax.html",
+        "engine": "fetch",
+        "bodySelectors": ["main", "#main-content", "article", "#content"],
+        "dropSelectors": ["script", "style", "noscript", "header", "nav", "footer"],
+        "minBodyChars": 100
+      }
     ]
+  },
+  "regulations": {
+    "_comment": "12 CSR 10 -- Missouri Dept. of Revenue regulations (Code of State Regulations, Title 12, Division 10), promulgated under statutory authority. Binding administrative detail the statute underspecifies (docs/SOURCES.md). authority='regulation' -- ranks below statute, above informal FAQ guidance. PDF-served by the Secretary of State (sos.mo.gov), not HTML -- parsed via pdf-parse (Node), a separate code path from the HTML selector pipeline (see scripts/fetch.mjs fetchRegulations / pipeline/lib/parse.mjs parsePdfBuffer).",
+    "authority": "regulation",
+    "engine": "pdf",
+    "indexUrl": "https://www.sos.mo.gov/adrules/csr/current/12csr/12csr",
+    "pdfUrlPattern": "https://www.sos.mo.gov/cmsimages/adrules/csr/current/12csr/12c10-{division}.pdf",
+    "_divisions_note": "Division numbers below are a STARTING SET confirmed to exist (seen via direct search of sos.mo.gov), not a verified-complete list. indexUrl is not yet wired for auto-discovery -- its link markup hasn't been inspected against a live fetch. Treat this the same as statute chapters: extend `divisions` as more are confirmed, or wire chapter-index discovery once the index page's HTML shape is known.",
+    "divisions": ["2", "10", "26", "41", "110"],
+    "minBodyChars": 60,
+    "rateLimitMs": 2000
   }
 }

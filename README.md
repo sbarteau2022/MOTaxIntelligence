@@ -60,13 +60,28 @@ wrangler vectorize create mo-tax-vectors --dimensions=1024 --metric=cosine
 npm run db:schema:remote
 wrangler secret put TAX_SERVICE_KEY
 
-# pull → build → verify → ingest
+# pull → build → verify → ingest (repeat per source: default is statutes/revisor)
 npm run pull:fetch                              # slow + polite; resumable
-npm run pull:build
+npm run pull:fetch -- --source justia           # statute mirror
+npm run pull:fetch -- --source supplemental     # DOR guidance FAQ pages
+npm run pull:fetch -- --source regulations      # 12 CSR 10 (PDF) -- see docs/SOURCES.md
+npm run pull:build                              # processes ALL fetched sources in one pass
 npm run pull:verify
 INGEST_URL=https://mo-tax.<subdomain>.workers.dev SERVICE_KEY=... npm run pull:ingest
 
 npm run deploy
+```
+
+## Database management
+
+`POST /admin/verify` and `GET /admin/stats` (both `TAX_SERVICE_KEY`-gated, like
+`/admin/ingest`) run/read the same maintenance passes as the weekly Cron Trigger
+(`wrangler.toml`) — a DB-level integrity re-check plus a source-drift check against the
+plain-fetchable sources. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#database-management-cron--on-demand).
+
+```bash
+curl -sX POST https://mo-tax.<subdomain>.workers.dev/admin/verify -H "authorization: Bearer $TAX_SERVICE_KEY"
+curl -s https://mo-tax.<subdomain>.workers.dev/admin/stats -H "authorization: Bearer $TAX_SERVICE_KEY"
 ```
 
 ## Query
