@@ -60,9 +60,9 @@ wrangler vectorize create mo-tax-vectors --dimensions=1024 --metric=cosine
 npm run db:schema:remote
 wrangler secret put TAX_SERVICE_KEY
 
-# pull → build → verify → ingest (repeat per source: default is statutes/revisor)
-npm run pull:fetch                              # slow + polite; resumable
-npm run pull:fetch -- --source justia           # statute mirror
+# pull → build → verify → ingest (repeat --source fetch per statute source)
+npm run pull:fetch                              # slow + polite; resumable; default source is justia
+npm run pull:fetch -- --source revisor          # official source (JS-rendered; harden later)
 npm run pull:fetch -- --source supplemental     # DOR guidance FAQ pages
 npm run pull:fetch -- --source regulations      # 12 CSR 10 (PDF) -- see docs/SOURCES.md
 npm run pull:build                              # processes ALL fetched sources in one pass
@@ -71,6 +71,20 @@ INGEST_URL=https://mo-tax.<subdomain>.workers.dev SERVICE_KEY=... npm run pull:i
 
 npm run deploy
 ```
+
+## Development
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars   # set TAX_SERVICE_KEY for local /admin/* auth
+npm run dev                      # wrangler dev
+npm test                         # vitest — chunk invariant, entity classifier, retrieval
+                                  # grouping, db-management, PDF parsing (41 tests)
+npm run typecheck                # tsc --noEmit
+```
+
+`.github/workflows/check.yml` runs `typecheck` + `test` on every pull request and on
+push to `main` — the gate for the flawlessness invariants this repo relies on.
 
 ## Automated pull (CI)
 
