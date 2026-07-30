@@ -31,6 +31,7 @@ export interface ParentRecord {
   source_url: string;
   retrieved_at: string;
   checksum: string;
+  raw_checksum: string | null;
   char_len: number;
   body: string;
 }

@@ -1,0 +1,32 @@
+# Check — typecheck + test on every PR and on push to main. Nothing enforced
+# this before: the flawlessness discipline this repo talks about (verify.mjs
+# refuses to emit a corpus with any drift/gap/untagged section) only ever ran
+# locally, on demand. This is the gate that actually runs it on every change.
+
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: Typecheck and test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test

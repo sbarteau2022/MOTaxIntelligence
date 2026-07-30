@@ -22,15 +22,33 @@ Ranked for a "flawless, citable to the letter" corpus.
 ## Administrative guidance (how it's administered — never outranks statute)
 
 Ingested as `authority = "guidance"` parents so a citation never mistakes guidance for
-the statute:
+the statute. **Wired**: `npm run pull:fetch --source supplemental` → `pull:build` →
+`pull:verify` → `pull:ingest` (same four-stage pipeline as the statute chapters).
 
 - **DOR — SALT Parity Act FAQs** — `dor.mo.gov/faq/taxation/business/salt-parity-act.html`
 - **DOR — Pass-Through Entity Tax FAQs** — `dor.mo.gov/faq/taxation/business/entity-tax.html`
-- **DOR — MO-PTE instructions** (PDF) — operational detail for §143.436 elections.
+- **DOR — MO-PTE instructions** (PDF) — not yet in the manifest; add as a `supplemental.pages`
+  entry with `engine: 'pdf'` (a `regulations`-style entry, not `fetch`) once prioritized.
 
-> Not yet wired: **12 CSR 10** (Dept. of Revenue regulations, on the Secretary of State's
-> site) carries binding administrative detail the statute underspecifies. Add as a
-> `guidance`-authority source when you extend the manifest.
+## Regulations (binding, but not the statute itself)
+
+**12 CSR 10** — Missouri Code of State Regulations, Title 12 (Department of Revenue),
+promulgated under statutory authority. Carries binding administrative detail the statute
+underspecifies. Ingested as `authority = "regulation"` — ranks below statute, above
+informal FAQ guidance. **Partially wired**:
+
+- Confirmed real, PDF-served at `sos.mo.gov` (`sources/manifest.json`'s `regulations`
+  block has the actual index URL and PDF URL pattern, plus a starting division list:
+  2, 10, 26, 41, 110).
+- `scripts/fetch.mjs --source regulations` downloads the PDFs; `pipeline/lib/parse.mjs`'s
+  `parsePdfSection` extracts text via `pdf-parse` (tested against a real PDF fixture,
+  `test/parse-pdf.test.mjs`).
+- **Not yet done**: the division list is a starting set, not verified-complete (index-page
+  auto-discovery isn't wired — the index page's link markup hasn't been inspected against
+  a live fetch); and no `entity-map.json` rule exists yet for `chapter: 'regulations'`, so
+  every fetched division is reported UNTAGGED and blocked from the corpus until a human
+  reviews the real text and adds a rule (`sources/entity-map.json`'s `_regulations_note`)
+  — same discipline as an unreviewed statute section, deliberately not defaulted.
 
 ## Entity-class logic (Missouri conforms to federal default classification)
 
