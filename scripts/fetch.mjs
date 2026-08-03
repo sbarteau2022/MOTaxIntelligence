@@ -63,22 +63,32 @@ async function fetchStatutes(manifest, sourceKey) {
   const chapters = manifest.chapters.filter((c) => !args.chapter || c.chapter === String(args.chapter));
   const fetchImpl = await makeFetcher(args.engine ?? source.engine);
 
-  let ok = 0, skip = 0, fail = 0, chaptersFailed = 0;
+  // Resolve every chapter's section list FIRST, before fetching any section
+  // body. Proven in CI: chapter 347/351 discovery consistently returned 0
+  // links when it ran after chapter 143's ~168 section fetches, but passed
+  // cleanly run in isolation as the very first request of a session (same
+  // sectionLinkPattern, same URL scheme — this isn't a selector bug). That
+  // points at Cloudflare bot-scoring accumulating over a burst of traffic
+  // within one session, not a per-chapter page-structure problem. Keeping
+  // every discovery request early — before the ~170-request burst chapter
+  // 143's sections generate — avoids the state that broke it.
+  let chaptersFailed = 0;
+  const resolved = [];
   for (const ch of chapters) {
-    let sections;
     try {
-      sections = await resolveSections(source, ch, fetchImpl);
+      const sections = await resolveSections(source, ch, fetchImpl);
+      resolved.push({ ch, sections });
     } catch (e) {
-      // Isolate a bad chapter to itself. Discovery failing on one chapter
-      // (e.g. a source's index page not matching sectionLinkPattern) used to
-      // throw out of this whole loop, silently skipping every chapter listed
-      // after it in the manifest — worse than the one chapter it actually
-      // failed on. Record it and keep going so the rest of the corpus still
-      // lands; the run still exits non-zero so the gap isn't silent.
+      // Isolate a bad chapter to itself rather than aborting discovery (and
+      // therefore fetching) for every chapter listed after it in the
+      // manifest. The run still exits non-zero so the gap isn't silent.
       chaptersFailed++;
       process.stdout.write(`  ✗ chapter ${ch.chapter} (${ch.label}) — discovery failed: ${e.message}\n`);
-      continue;
     }
+  }
+
+  let ok = 0, skip = 0, fail = 0;
+  for (const { ch, sections } of resolved) {
     console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
     const dir = path.join(RAW, sourceKey, ch.chapter);
     await mkdir(dir, { recursive: true });
