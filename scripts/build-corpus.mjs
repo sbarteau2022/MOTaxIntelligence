@@ -32,7 +32,11 @@ async function main() {
     const srcDir = path.join(RAW, sourceKey);
     for (const chapter of await listDirs(srcDir)) {
       const chDir = path.join(srcDir, chapter);
-      for (const f of (await readdir(chDir)).filter((n) => n.endsWith('.html'))) {
+      // Leading underscore = internal debug artifact (e.g. fetch.mjs's
+      // _index.html, saved when chapter-index discovery fails, so the
+      // failure is diagnosable from the raw-html artifact) — never a real
+      // section, and must never be scanned as one.
+      for (const f of (await readdir(chDir)).filter((n) => n.endsWith('.html') && !n.startsWith('_'))) {
         const section = f.replace(/\.html$/, '');
         const html = await readFile(path.join(chDir, f), 'utf8');
         const meta = await readJson(path.join(chDir, f.replace(/\.html$/, '.meta.json')));
