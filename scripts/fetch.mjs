@@ -194,7 +194,18 @@ async function resolveSections(source, ch, fetchImpl) {
   // the section pages that immediately followed it succeeding. Retry the
   // index fetch before concluding the selectors are actually wrong, so one
   // flaky request doesn't fail an entire chapter.
-  const html = await fetchWithRetry(fetchImpl, url, { attempts: 4, baseDelayMs: 2000 });
+  //
+  // Index pages also get a much longer post-navigation settle wait than
+  // section pages: the 600ms default (tuned for section fetches, where it's
+  // paid hundreds of times) is enough once Cloudflare has already cleared a
+  // browser for this site, but a URL *prefix* the session hasn't hit yet
+  // (chapter 143 always succeeds; 347/351 — later in the manifest, first
+  // request to that chapter's path — have consistently failed discovery in
+  // CI) can trigger a fresh "checking your browser" challenge that needs a
+  // few seconds to auto-clear. Discovery only runs once per chapter, so
+  // paying that cost here doesn't touch the section-fetch time budget.
+  const discoveryFetch = (u) => fetchImpl(u, { waitMs: 5000 });
+  const html = await fetchWithRetry(discoveryFetch, url, { attempts: 4, baseDelayMs: 2000 });
 
   const extractSections = (h) => {
     const re = new RegExp(source.sectionLinkPattern, 'g');
@@ -216,7 +227,7 @@ async function resolveSections(source, ch, fetchImpl) {
   for (let attempt = 0; attempt < 2 && list.length < 3; attempt++) {
     await sleep(3000 * 2 ** attempt);
     try {
-      list = extractSections(await fetchImpl(url));
+      list = extractSections(await discoveryFetch(url));
     } catch { /* keep retrying */ }
   }
 
@@ -245,7 +256,7 @@ async function makeFetcher(engine) {
       viewport: { width: 1280, height: 900 },
       extraHTTPHeaders: { 'accept-language': 'en-US,en;q=0.9' },
     });
-    const fn = async (url) => {
+    const fn = async (url, opts = {}) => {
       const page = await ctx.newPage();
       try {
         const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -255,8 +266,10 @@ async function makeFetcher(engine) {
         // so networkidle was timing out on EVERY page (~15s tax x 168 sections
         // = ~45min for one chapter, threatening the job's 90min budget) for no
         // benefit — a real statute page or a Cloudflare challenge both finish
-        // rendering well under a second.
-        await page.waitForTimeout(600);
+        // rendering well under a second. Callers paying for a page only once
+        // per chapter (chapter-index discovery) can override this with a
+        // longer wait via opts.waitMs — see resolveSections.
+        await page.waitForTimeout(opts.waitMs ?? 600);
         const status = resp ? resp.status() : 0;
         const html = await page.content();
         // A challenge/error page is tiny; a real statute page is large. Throw
