@@ -61,34 +61,40 @@ async function fetchStatutes(manifest, sourceKey) {
   if (!source) throw new Error(`unknown source '${sourceKey}'`);
 
   const chapters = manifest.chapters.filter((c) => !args.chapter || c.chapter === String(args.chapter));
-  const fetchImpl = await makeFetcher(args.engine ?? source.engine);
+  const engine = args.engine ?? source.engine;
 
-  // Resolve every chapter's section list FIRST, before fetching any section
-  // body. Proven in CI: chapter 347/351 discovery consistently returned 0
-  // links when it ran after chapter 143's ~168 section fetches, but passed
-  // cleanly run in isolation as the very first request of a session (same
-  // sectionLinkPattern, same URL scheme — this isn't a selector bug). That
-  // points at Cloudflare bot-scoring accumulating over a burst of traffic
-  // within one session, not a per-chapter page-structure problem. Keeping
-  // every discovery request early — before the ~170-request burst chapter
-  // 143's sections generate — avoids the state that broke it.
+  // Give every chapter its own fresh browser session (fresh cookies), used
+  // for both its discovery request and its section fetches. Proven in CI
+  // across three runs: a chapter-index request only succeeds when it's the
+  // FIRST such request in its session — chapter 143 (first in the manifest)
+  // always succeeds; whichever chapter's index comes second in the SAME
+  // session always fails, even when it's the very next request right after
+  // chapter 143's own (successful) index fetch, with none of chapter 143's
+  // ~168 section fetches in between. Section-page requests don't trip this —
+  // only the chapter-index URL shape seems rate-limited to one-per-session.
+  // A completely isolated `--chapter 347` run (fresh browser, its index as
+  // the only request) passed end-to-end, confirming a fresh session per
+  // chapter sidesteps it; per-request waits and reordering within one shared
+  // session (both tried first) did not.
   let chaptersFailed = 0;
   const resolved = [];
   for (const ch of chapters) {
+    const fetchImpl = await makeFetcher(engine);
     try {
       const sections = await resolveSections(source, ch, fetchImpl);
-      resolved.push({ ch, sections });
+      resolved.push({ ch, sections, fetchImpl });
     } catch (e) {
       // Isolate a bad chapter to itself rather than aborting discovery (and
       // therefore fetching) for every chapter listed after it in the
       // manifest. The run still exits non-zero so the gap isn't silent.
       chaptersFailed++;
       process.stdout.write(`  ✗ chapter ${ch.chapter} (${ch.label}) — discovery failed: ${e.message}\n`);
+      await fetchImpl.close?.();
     }
   }
 
   let ok = 0, skip = 0, fail = 0;
-  for (const { ch, sections } of resolved) {
+  for (const { ch, sections, fetchImpl } of resolved) {
     console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
     const dir = path.join(RAW, sourceKey, ch.chapter);
     await mkdir(dir, { recursive: true });
@@ -115,8 +121,8 @@ async function fetchStatutes(manifest, sourceKey) {
       }
       await sleep(source.rateLimitMs ?? 2000);
     }
+    await fetchImpl.close?.();
   }
-  await fetchImpl.close?.();
   console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail} chaptersFailed=${chaptersFailed}`);
   if (fail || chaptersFailed) process.exitCode = 1;
 }
