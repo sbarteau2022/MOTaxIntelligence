@@ -63,9 +63,22 @@ async function fetchStatutes(manifest, sourceKey) {
   const chapters = manifest.chapters.filter((c) => !args.chapter || c.chapter === String(args.chapter));
   const fetchImpl = await makeFetcher(args.engine ?? source.engine);
 
-  let ok = 0, skip = 0, fail = 0;
+  let ok = 0, skip = 0, fail = 0, chaptersFailed = 0;
   for (const ch of chapters) {
-    const sections = await resolveSections(source, ch, fetchImpl);
+    let sections;
+    try {
+      sections = await resolveSections(source, ch, fetchImpl);
+    } catch (e) {
+      // Isolate a bad chapter to itself. Discovery failing on one chapter
+      // (e.g. a source's index page not matching sectionLinkPattern) used to
+      // throw out of this whole loop, silently skipping every chapter listed
+      // after it in the manifest — worse than the one chapter it actually
+      // failed on. Record it and keep going so the rest of the corpus still
+      // lands; the run still exits non-zero so the gap isn't silent.
+      chaptersFailed++;
+      process.stdout.write(`  ✗ chapter ${ch.chapter} (${ch.label}) — discovery failed: ${e.message}\n`);
+      continue;
+    }
     console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
     const dir = path.join(RAW, sourceKey, ch.chapter);
     await mkdir(dir, { recursive: true });
@@ -94,8 +107,8 @@ async function fetchStatutes(manifest, sourceKey) {
     }
   }
   await fetchImpl.close?.();
-  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail}`);
-  if (fail) process.exitCode = 1;
+  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail} chaptersFailed=${chaptersFailed}`);
+  if (fail || chaptersFailed) process.exitCode = 1;
 }
 
 // ── DOR guidance pages (manifest.supplemental.pages) — plain fetch, HTML ───
