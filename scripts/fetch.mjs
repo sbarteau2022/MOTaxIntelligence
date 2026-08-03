@@ -64,38 +64,49 @@ async function fetchStatutes(manifest, sourceKey) {
   const fetchImpl = await makeFetcher(args.engine ?? source.engine);
 
   let ok = 0, skip = 0, fail = 0;
+  const failedChapters = [];
   for (const ch of chapters) {
-    const sections = await resolveSections(source, ch, fetchImpl);
-    console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
-    const dir = path.join(RAW, sourceKey, ch.chapter);
-    await mkdir(dir, { recursive: true });
+    // A whole chapter failing (e.g. discovery blocked) must not abort chapters
+    // that come after it — chapter 347 failing shouldn't cost us 351, and
+    // shouldn't discard the 143 data already fetched and written to disk in
+    // an earlier iteration of this same loop. Each chapter gets its own
+    // try/catch; the run only exits non-zero once every chapter's been tried.
+    try {
+      const sections = await resolveSections(source, ch, fetchImpl, sourceKey);
+      console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
+      const dir = path.join(RAW, sourceKey, ch.chapter);
+      await mkdir(dir, { recursive: true });
 
-    for (const section of sections) {
-      const file = path.join(dir, `${section}.html`);
-      if (!args.force && existsSync(file) && (await nonEmpty(file))) { skip++; continue; }
-      const url = source.sectionUrl
-        .replace('{section}', section)
-        .replace('{section_slug}', section.replace('.', '-'))
-        .replace('{chapter}', ch.chapter)
-        .replace('{title_slug}', ch.title_slug ?? '')
-        .replace('{justia_title}', ch.justia_title ?? '');
-      try {
-        const html = await fetchImpl(url);
-        const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
-        await writeFile(file, html, 'utf8');
-        await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
-        ok++;
-        process.stdout.write(`  ✓ ${section}\n`);
-      } catch (e) {
-        fail++;
-        process.stdout.write(`  ✗ ${section} — ${e.message}\n`);
+      for (const section of sections) {
+        const file = path.join(dir, `${section}.html`);
+        if (!args.force && existsSync(file) && (await nonEmpty(file))) { skip++; continue; }
+        const url = source.sectionUrl
+          .replace('{section}', section)
+          .replace('{section_slug}', section.replace('.', '-'))
+          .replace('{chapter}', ch.chapter)
+          .replace('{title_slug}', ch.title_slug ?? '')
+          .replace('{justia_title}', ch.justia_title ?? '');
+        try {
+          const html = await fetchWithRetry(fetchImpl, url);
+          const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
+          await writeFile(file, html, 'utf8');
+          await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
+          ok++;
+          process.stdout.write(`  ✓ ${section}\n`);
+        } catch (e) {
+          fail++;
+          process.stdout.write(`  ✗ ${section} — ${e.message}\n`);
+        }
+        await sleep(source.rateLimitMs ?? 2000);
       }
-      await sleep(source.rateLimitMs ?? 2000);
+    } catch (e) {
+      failedChapters.push(ch.chapter);
+      console.error(`[fetch] chapter ${ch.chapter} (${ch.label}) FAILED, moving to next chapter — ${e.message}`);
     }
   }
   await fetchImpl.close?.();
-  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail}`);
-  if (fail) process.exitCode = 1;
+  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail}${failedChapters.length ? `, chapters_failed=[${failedChapters.join(', ')}]` : ''}`);
+  if (fail || failedChapters.length) process.exitCode = 1;
 }
 
 // ── DOR guidance pages (manifest.supplemental.pages) — plain fetch, HTML ───
@@ -170,29 +181,87 @@ async function fetchRegulations(manifest) {
 
 // Discover section numbers from a chapter index page (or use an explicit list
 // if the manifest provides one instead of "discover").
-async function resolveSections(source, ch, fetchImpl) {
+async function resolveSections(source, ch, fetchImpl, sourceKey) {
   if (Array.isArray(ch.sections)) return ch.sections;
   const url = source.chapterIndexUrl
     .replace('{chapter}', ch.chapter)
     .replace('{title_slug}', ch.title_slug ?? '')
     .replace('{justia_title}', ch.justia_title ?? '');
-  const html = await fetchImpl(url);
-  const re = new RegExp(source.sectionLinkPattern, 'g');
-  const found = new Set();
-  for (let m; (m = re.exec(html)); ) found.add(m[1].replace('-', '.'));
-  // Keep only sections that actually belong to THIS chapter. Index pages link to
-  // cross-referenced sections in other chapters (e.g. §3.090) and boilerplate;
-  // without this guard the crawler pulls those junk links instead of the chapter.
-  const list = [...found].filter((s) => s.startsWith(ch.chapter + '.')).sort((a, b) => ord(a) - ord(b));
+  // Discovery has been seen to return 0 links on an otherwise-working source —
+  // a transient Cloudflare challenge on just the index request, distinct from
+  // the section pages that immediately followed it succeeding. Retry the
+  // index fetch before concluding the selectors are actually wrong, so one
+  // flaky request doesn't fail an entire chapter.
+  let html;
+  try {
+    html = await fetchWithRetry(fetchImpl, url, { attempts: 4, baseDelayMs: 2000 });
+  } catch (e) {
+    await saveIndexDebug(sourceKey, ch.chapter, url, `<!-- fetch failed: ${e.message} -->`);
+    throw e;
+  }
+
+  const extractSections = (h) => {
+    const re = new RegExp(source.sectionLinkPattern, 'g');
+    const found = new Set();
+    for (let m; (m = re.exec(h)); ) found.add(m[1].replace('-', '.'));
+    // Keep only sections that actually belong to THIS chapter. Index pages link
+    // to cross-referenced sections in other chapters (e.g. §3.090) and
+    // boilerplate; without this guard the crawler pulls those junk links
+    // instead of the chapter.
+    return [...found].filter((s) => s.startsWith(ch.chapter + '.')).sort((a, b) => ord(a) - ord(b));
+  };
+
+  let list = extractSections(html);
+  let lastHtml = html;
+
+  // Empty result even after a successful fetch: re-request the index page
+  // itself once more before giving up — this is the "chapter 347 got 0
+  // sections" case seen in CI, where the request 200'd but rendered a
+  // challenge/interstitial instead of the real list.
+  for (let attempt = 0; attempt < 2 && list.length < 3; attempt++) {
+    await sleep(3000 * 2 ** attempt);
+    try {
+      lastHtml = await fetchImpl(url);
+      list = extractSections(lastHtml);
+    } catch { /* keep retrying */ }
+  }
+
   if (list.length < 3) {
+    // Persist exactly what we got back so a failure is diagnosable from the
+    // raw-html artifact without live network access — resolveSections used to
+    // fetch this page and throw it away, leaving nothing to inspect when
+    // discovery failed (the artifact only ever had per-section pages, never
+    // the index page itself).
+    await saveIndexDebug(sourceKey, ch.chapter, url, lastHtml);
     throw new Error(
       `discovered only ${list.length} section(s) for chapter ${ch.chapter}` +
       `${list.length ? ' [' + list.join(', ') + ']' : ''} — the index page likely rendered its ` +
-      `section list via JS, or sectionLinkPattern/selectors are wrong for this source. ` +
-      `Inspect the raw-html artifact and fix sources/manifest.json (or use --source justia).`
+      `section list via JS, hit a Cloudflare challenge${looksLikeChallenge(lastHtml) ? ' (challenge markers detected in the response)' : ''}, ` +
+      `or sectionLinkPattern/selectors are wrong for this source. See the saved _index.html in the ` +
+      `raw-html artifact (data/raw/${sourceKey}/${ch.chapter}/_index.html) and fix sources/manifest.json.`
     );
   }
   return list;
+}
+
+// Cheap heuristic — not a real challenge parser, just enough to tell a human
+// "you got blocked" apart from "the selectors don't match this page".
+function looksLikeChallenge(html) {
+  const markers = ['cf-chl', 'Just a moment', 'Checking your browser', 'Attention Required', 'cf_captcha', 'challenge-platform'];
+  return markers.some((m) => html.includes(m));
+}
+
+async function saveIndexDebug(sourceKey, chapter, url, html) {
+  try {
+    const dir = path.join(RAW, sourceKey, chapter);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, '_index.html'), html, 'utf8');
+    await writeFile(
+      path.join(dir, '_index.meta.json'),
+      JSON.stringify({ chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), byte_len: html.length }, null, 2),
+      'utf8'
+    );
+  } catch { /* debug artifact is best-effort; never let it mask the real error */ }
 }
 
 async function makeFetcher(engine) {
@@ -214,8 +283,13 @@ async function makeFetcher(engine) {
       try {
         const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         // Let JS-rendered lists (revisor.mo.gov) and any Cloudflare interstitial
-        // (justia) settle before reading the DOM.
-        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        // (justia) settle before reading the DOM. A fixed short wait, not
+        // networkidle: justia keeps ad/tracker connections open indefinitely,
+        // so networkidle was timing out on EVERY page (~15s tax x 168 sections
+        // = ~45min for one chapter, threatening the job's 90min budget) for no
+        // benefit — a real statute page or a Cloudflare challenge both finish
+        // rendering well under a second.
+        await page.waitForTimeout(600);
         const status = resp ? resp.status() : 0;
         const html = await page.content();
         // A challenge/error page is tiny; a real statute page is large. Throw
@@ -254,6 +328,22 @@ async function nonEmptyBinary(file) {
 }
 function ord(s) { const [a, b = '0'] = s.split('.'); return Number(a) * 1e6 + Number(b.padEnd(6, '0')); }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// Shared retry-with-backoff around a single fetchImpl(url) call — used for
+// both chapter-index discovery and individual section pages, since both hit
+// the same transient-Cloudflare-challenge failure mode.
+async function fetchWithRetry(fetchImpl, url, { attempts = 3, baseDelayMs = 1500 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetchImpl(url);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < attempts - 1) await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+  throw new Error(`fetch failed after ${attempts} attempts: ${lastErr?.message}`);
+}
 function parseArgs(a) {
   const o = {};
   for (let i = 0; i < a.length; i++) {
