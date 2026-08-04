@@ -79,7 +79,7 @@ npm install
 cp .dev.vars.example .dev.vars   # set TAX_SERVICE_KEY for local /admin/* auth
 npm run dev                      # wrangler dev
 npm test                         # vitest — chunk invariant, entity classifier, retrieval
-                                  # grouping, db-management, PDF parsing (41 tests)
+                                  # grouping, db-management, PDF parsing, console (54 tests)
 npm run typecheck                # tsc --noEmit
 ```
 
@@ -116,6 +116,22 @@ plain-fetchable sources. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#datab
 curl -sX POST https://mo-tax.<subdomain>.workers.dev/admin/verify -H "authorization: Bearer $TAX_SERVICE_KEY"
 curl -s https://mo-tax.<subdomain>.workers.dev/admin/stats -H "authorization: Bearer $TAX_SERVICE_KEY"
 ```
+
+## Console
+
+`GET /` (and `/console`) serves a query console straight from the Worker — no
+build step, no separate deploy. Ask a question, filter by entity class, and get
+whole sections back with the matched embedding windows highlighted **inside**
+the verbatim text, plus source URL, retrieval date, and checksum on every hit.
+
+It is served by the Worker rather than hosted separately on purpose: no route
+here sets CORS headers, so a console on any other origin would have its
+`POST /query` blocked by the browser. Same-origin means it works the moment you
+deploy, without widening the API's CORS surface just to serve a UI.
+
+`/admin/*` is deliberately absent from the console — those routes are gated by
+`TAX_SERVICE_KEY`, and a full-scope key has no business being typed into a
+browser tab. `/health` (unauthenticated) is the only status surface exposed.
 
 ## Query
 

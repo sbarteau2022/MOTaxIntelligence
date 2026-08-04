@@ -2,6 +2,8 @@
 // MOTaxIntelligence Worker.
 //
 // Routes:
+//   GET  /                 statute query console (HTML) — see src/console.ts
+//   GET  /console          same page, explicit path
 //   GET  /health           liveness + row counts
 //   POST /query            small-to-big retrieval (JSON: {q, entity?, top_k?})
 //   POST /admin/ingest     load parents+children, embed children, upsert vectors
@@ -20,6 +22,7 @@
 // ============================================================
 
 import { EMBEDDING_MODEL } from './config';
+import { CONSOLE_HTML } from './console';
 import { retrieve, type RetrieveOpts } from './retrieval';
 import { logIngestionEvent, runIntegrityCheck, checkSourceDrift } from './db-management';
 import type { Env, EntityFilter } from './types';
@@ -28,6 +31,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
+      if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/console')) return consolePage();
       if (request.method === 'GET' && url.pathname === '/health') return health(env);
       if (request.method === 'POST' && url.pathname === '/query') return query(request, env);
       if (request.method === 'POST' && url.pathname === '/admin/ingest') return ingest(request, env);
@@ -60,6 +64,17 @@ async function runMaintenance(env: Env): Promise<void> {
   } catch (e) {
     await logIngestionEvent(env, 'verify_failed', { error: (e as Error).message }).catch(() => {});
   }
+}
+
+// ── / and /console ──────────────────────────────────────────
+// Served from the Worker itself so the console is same-origin with /query.
+// No route here sets CORS headers, so a console hosted anywhere else would
+// have its POST /query blocked by the browser — serving it here keeps the
+// UI working with zero config and without widening the API's CORS surface.
+function consolePage(): Response {
+  return new Response(CONSOLE_HTML, {
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' },
+  });
 }
 
 // ── /health ─────────────────────────────────────────────────
