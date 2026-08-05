@@ -61,21 +61,43 @@ async function fetchStatutes(manifest, sourceKey) {
   if (!source) throw new Error(`unknown source '${sourceKey}'`);
 
   const chapters = manifest.chapters.filter((c) => !args.chapter || c.chapter === String(args.chapter));
-  const fetchImpl = await makeFetcher(args.engine ?? source.engine);
+  const engine = args.engine ?? source.engine;
+
+  // Give every chapter its own fresh browser session (fresh cookies), used
+  // for both its discovery request and its section fetches. Proven in CI
+  // across three runs: a chapter-index request only succeeds when it's the
+  // FIRST such request in its session — chapter 143 (first in the manifest)
+  // always succeeds; whichever chapter's index comes second in the SAME
+  // session always fails, even when it's the very next request right after
+  // chapter 143's own (successful) index fetch, with none of chapter 143's
+  // ~168 section fetches in between. Section-page requests don't trip this —
+  // only the chapter-index URL shape seems rate-limited to one-per-session.
+  // A completely isolated `--chapter 347` run (fresh browser, its index as
+  // the only request) passed end-to-end, confirming a fresh session per
+  // chapter sidesteps it; per-request waits and reordering within one shared
+  // session (both tried first) did not.
+  let chaptersFailed = 0;
+  const resolved = [];
+  for (const ch of chapters) {
+    const fetchImpl = await makeFetcher(engine);
+    try {
+      const sections = await resolveSections(source, ch, fetchImpl);
+      resolved.push({ ch, sections, fetchImpl });
+    } catch (e) {
+      // Isolate a bad chapter to itself rather than aborting discovery (and
+      // therefore fetching) for every chapter listed after it in the
+      // manifest. The run still exits non-zero so the gap isn't silent.
+      chaptersFailed++;
+      process.stdout.write(`  ✗ chapter ${ch.chapter} (${ch.label}) — discovery failed: ${e.message}\n`);
+      await fetchImpl.close?.();
+    }
+  }
 
   let ok = 0, skip = 0, fail = 0;
-  const failedChapters = [];
-  for (const ch of chapters) {
-    // A whole chapter failing (e.g. discovery blocked) must not abort chapters
-    // that come after it — chapter 347 failing shouldn't cost us 351, and
-    // shouldn't discard the 143 data already fetched and written to disk in
-    // an earlier iteration of this same loop. Each chapter gets its own
-    // try/catch; the run only exits non-zero once every chapter's been tried.
-    try {
-      const sections = await resolveSections(source, ch, fetchImpl, sourceKey);
-      console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
-      const dir = path.join(RAW, sourceKey, ch.chapter);
-      await mkdir(dir, { recursive: true });
+  for (const { ch, sections, fetchImpl } of resolved) {
+    console.log(`[fetch] chapter ${ch.chapter} (${ch.label}) — ${sections.length} sections`);
+    const dir = path.join(RAW, sourceKey, ch.chapter);
+    await mkdir(dir, { recursive: true });
 
       for (const section of sections) {
         const file = path.join(dir, `${section}.html`);
@@ -103,10 +125,10 @@ async function fetchStatutes(manifest, sourceKey) {
       failedChapters.push(ch.chapter);
       console.error(`[fetch] chapter ${ch.chapter} (${ch.label}) FAILED, moving to next chapter — ${e.message}`);
     }
+    await fetchImpl.close?.();
   }
-  await fetchImpl.close?.();
-  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail}${failedChapters.length ? `, chapters_failed=[${failedChapters.join(', ')}]` : ''}`);
-  if (fail || failedChapters.length) process.exitCode = 1;
+  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail} chaptersFailed=${chaptersFailed}`);
+  if (fail || chaptersFailed) process.exitCode = 1;
 }
 
 // ── DOR guidance pages (manifest.supplemental.pages) — plain fetch, HTML ───
@@ -192,13 +214,18 @@ async function resolveSections(source, ch, fetchImpl, sourceKey) {
   // the section pages that immediately followed it succeeding. Retry the
   // index fetch before concluding the selectors are actually wrong, so one
   // flaky request doesn't fail an entire chapter.
-  let html;
-  try {
-    html = await fetchWithRetry(fetchImpl, url, { attempts: 4, baseDelayMs: 2000 });
-  } catch (e) {
-    await saveIndexDebug(sourceKey, ch.chapter, url, `<!-- fetch failed: ${e.message} -->`);
-    throw e;
-  }
+  //
+  // Index pages also get a much longer post-navigation settle wait than
+  // section pages: the 600ms default (tuned for section fetches, where it's
+  // paid hundreds of times) is enough once Cloudflare has already cleared a
+  // browser for this site, but a URL *prefix* the session hasn't hit yet
+  // (chapter 143 always succeeds; 347/351 — later in the manifest, first
+  // request to that chapter's path — have consistently failed discovery in
+  // CI) can trigger a fresh "checking your browser" challenge that needs a
+  // few seconds to auto-clear. Discovery only runs once per chapter, so
+  // paying that cost here doesn't touch the section-fetch time budget.
+  const discoveryFetch = (u) => fetchImpl(u, { waitMs: 5000 });
+  const html = await fetchWithRetry(discoveryFetch, url, { attempts: 4, baseDelayMs: 2000 });
 
   const extractSections = (h) => {
     const re = new RegExp(source.sectionLinkPattern, 'g');
@@ -221,8 +248,7 @@ async function resolveSections(source, ch, fetchImpl, sourceKey) {
   for (let attempt = 0; attempt < 2 && list.length < 3; attempt++) {
     await sleep(3000 * 2 ** attempt);
     try {
-      lastHtml = await fetchImpl(url);
-      list = extractSections(lastHtml);
+      list = extractSections(await discoveryFetch(url));
     } catch { /* keep retrying */ }
   }
 
@@ -278,7 +304,7 @@ async function makeFetcher(engine) {
       viewport: { width: 1280, height: 900 },
       extraHTTPHeaders: { 'accept-language': 'en-US,en;q=0.9' },
     });
-    const fn = async (url) => {
+    const fn = async (url, opts = {}) => {
       const page = await ctx.newPage();
       try {
         const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -288,8 +314,10 @@ async function makeFetcher(engine) {
         // so networkidle was timing out on EVERY page (~15s tax x 168 sections
         // = ~45min for one chapter, threatening the job's 90min budget) for no
         // benefit — a real statute page or a Cloudflare challenge both finish
-        // rendering well under a second.
-        await page.waitForTimeout(600);
+        // rendering well under a second. Callers paying for a page only once
+        // per chapter (chapter-index discovery) can override this with a
+        // longer wait via opts.waitMs — see resolveSections.
+        await page.waitForTimeout(opts.waitMs ?? 600);
         const status = resp ? resp.status() : 0;
         const html = await page.content();
         // A challenge/error page is tiny; a real statute page is large. Throw
