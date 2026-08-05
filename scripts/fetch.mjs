@@ -99,27 +99,31 @@ async function fetchStatutes(manifest, sourceKey) {
     const dir = path.join(RAW, sourceKey, ch.chapter);
     await mkdir(dir, { recursive: true });
 
-    for (const section of sections) {
-      const file = path.join(dir, `${section}.html`);
-      if (!args.force && existsSync(file) && (await nonEmpty(file))) { skip++; continue; }
-      const url = source.sectionUrl
-        .replace('{section}', section)
-        .replace('{section_slug}', section.replace('.', '-'))
-        .replace('{chapter}', ch.chapter)
-        .replace('{title_slug}', ch.title_slug ?? '')
-        .replace('{justia_title}', ch.justia_title ?? '');
-      try {
-        const html = await fetchWithRetry(fetchImpl, url);
-        const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
-        await writeFile(file, html, 'utf8');
-        await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
-        ok++;
-        process.stdout.write(`  ✓ ${section}\n`);
-      } catch (e) {
-        fail++;
-        process.stdout.write(`  ✗ ${section} — ${e.message}\n`);
+      for (const section of sections) {
+        const file = path.join(dir, `${section}.html`);
+        if (!args.force && existsSync(file) && (await nonEmpty(file))) { skip++; continue; }
+        const url = source.sectionUrl
+          .replace('{section}', section)
+          .replace('{section_slug}', section.replace('.', '-'))
+          .replace('{chapter}', ch.chapter)
+          .replace('{title_slug}', ch.title_slug ?? '')
+          .replace('{justia_title}', ch.justia_title ?? '');
+        try {
+          const html = await fetchWithRetry(fetchImpl, url);
+          const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
+          await writeFile(file, html, 'utf8');
+          await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
+          ok++;
+          process.stdout.write(`  ✓ ${section}\n`);
+        } catch (e) {
+          fail++;
+          process.stdout.write(`  ✗ ${section} — ${e.message}\n`);
+        }
+        await sleep(source.rateLimitMs ?? 2000);
       }
-      await sleep(source.rateLimitMs ?? 2000);
+    } catch (e) {
+      failedChapters.push(ch.chapter);
+      console.error(`[fetch] chapter ${ch.chapter} (${ch.label}) FAILED, moving to next chapter — ${e.message}`);
     }
     await fetchImpl.close?.();
   }
@@ -199,7 +203,7 @@ async function fetchRegulations(manifest) {
 
 // Discover section numbers from a chapter index page (or use an explicit list
 // if the manifest provides one instead of "discover").
-async function resolveSections(source, ch, fetchImpl) {
+async function resolveSections(source, ch, fetchImpl, sourceKey) {
   if (Array.isArray(ch.sections)) return ch.sections;
   const url = source.chapterIndexUrl
     .replace('{chapter}', ch.chapter)
@@ -235,6 +239,7 @@ async function resolveSections(source, ch, fetchImpl) {
   };
 
   let list = extractSections(html);
+  let lastHtml = html;
 
   // Empty result even after a successful fetch: re-request the index page
   // itself once more before giving up — this is the "chapter 347 got 0
@@ -248,14 +253,41 @@ async function resolveSections(source, ch, fetchImpl) {
   }
 
   if (list.length < 3) {
+    // Persist exactly what we got back so a failure is diagnosable from the
+    // raw-html artifact without live network access — resolveSections used to
+    // fetch this page and throw it away, leaving nothing to inspect when
+    // discovery failed (the artifact only ever had per-section pages, never
+    // the index page itself).
+    await saveIndexDebug(sourceKey, ch.chapter, url, lastHtml);
     throw new Error(
       `discovered only ${list.length} section(s) for chapter ${ch.chapter}` +
       `${list.length ? ' [' + list.join(', ') + ']' : ''} — the index page likely rendered its ` +
-      `section list via JS, or sectionLinkPattern/selectors are wrong for this source. ` +
-      `Inspect the raw-html artifact and fix sources/manifest.json (or use --source justia).`
+      `section list via JS, hit a Cloudflare challenge${looksLikeChallenge(lastHtml) ? ' (challenge markers detected in the response)' : ''}, ` +
+      `or sectionLinkPattern/selectors are wrong for this source. See the saved _index.html in the ` +
+      `raw-html artifact (data/raw/${sourceKey}/${ch.chapter}/_index.html) and fix sources/manifest.json.`
     );
   }
   return list;
+}
+
+// Cheap heuristic — not a real challenge parser, just enough to tell a human
+// "you got blocked" apart from "the selectors don't match this page".
+function looksLikeChallenge(html) {
+  const markers = ['cf-chl', 'Just a moment', 'Checking your browser', 'Attention Required', 'cf_captcha', 'challenge-platform'];
+  return markers.some((m) => html.includes(m));
+}
+
+async function saveIndexDebug(sourceKey, chapter, url, html) {
+  try {
+    const dir = path.join(RAW, sourceKey, chapter);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, '_index.html'), html, 'utf8');
+    await writeFile(
+      path.join(dir, '_index.meta.json'),
+      JSON.stringify({ chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), byte_len: html.length }, null, 2),
+      'utf8'
+    );
+  } catch { /* debug artifact is best-effort; never let it mask the real error */ }
 }
 
 async function makeFetcher(engine) {
