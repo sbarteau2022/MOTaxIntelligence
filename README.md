@@ -1,4 +1,4 @@
- # MOTaxIntelligence
+  # MOTaxIntelligence
 
 Flawless, citable Missouri tax-code retrieval for the Elle/Atlas stack.
 
