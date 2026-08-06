@@ -20,12 +20,11 @@ binding = "AI"
 binding = "VECTORIZE"
 index_name = "mo-tax-vectors"
 
-# Canonical verbatim statute store. Create it once and paste the id:
-#   wrangler d1 create mo-tax
+# Canonical verbatim statute store.
 [[d1_databases]]
 binding = "DB"
 database_name = "mo-tax"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "e4b408dc-65b8-4e0d-9ad0-1948c4ef95c4"
 
 # TAX_SERVICE_KEY guards /admin/ingest, /admin/verify, /admin/stats. Set it as
 # a secret, never commit it:
