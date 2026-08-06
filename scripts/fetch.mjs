@@ -76,18 +76,18 @@ async function fetchStatutes(manifest, sourceKey) {
   // the only request) passed end-to-end, confirming a fresh session per
   // chapter sidesteps it; per-request waits and reordering within one shared
   // session (both tried first) did not.
-  let chaptersFailed = 0;
+  const failedChapters = [];
   const resolved = [];
   for (const ch of chapters) {
     const fetchImpl = await makeFetcher(engine);
     try {
-      const sections = await resolveSections(source, ch, fetchImpl);
+      const sections = await resolveSections(source, ch, fetchImpl, sourceKey);
       resolved.push({ ch, sections, fetchImpl });
     } catch (e) {
       // Isolate a bad chapter to itself rather than aborting discovery (and
       // therefore fetching) for every chapter listed after it in the
       // manifest. The run still exits non-zero so the gap isn't silent.
-      chaptersFailed++;
+      failedChapters.push(ch.chapter);
       process.stdout.write(`  ✗ chapter ${ch.chapter} (${ch.label}) — discovery failed: ${e.message}\n`);
       await fetchImpl.close?.();
     }
@@ -99,36 +99,32 @@ async function fetchStatutes(manifest, sourceKey) {
     const dir = path.join(RAW, sourceKey, ch.chapter);
     await mkdir(dir, { recursive: true });
 
-      for (const section of sections) {
-        const file = path.join(dir, `${section}.html`);
-        if (!args.force && existsSync(file) && (await nonEmpty(file))) { skip++; continue; }
-        const url = source.sectionUrl
-          .replace('{section}', section)
-          .replace('{section_slug}', section.replace('.', '-'))
-          .replace('{chapter}', ch.chapter)
-          .replace('{title_slug}', ch.title_slug ?? '')
-          .replace('{justia_title}', ch.justia_title ?? '');
-        try {
-          const html = await fetchWithRetry(fetchImpl, url);
-          const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
-          await writeFile(file, html, 'utf8');
-          await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
-          ok++;
-          process.stdout.write(`  ✓ ${section}\n`);
-        } catch (e) {
-          fail++;
-          process.stdout.write(`  ✗ ${section} — ${e.message}\n`);
-        }
-        await sleep(source.rateLimitMs ?? 2000);
+    for (const section of sections) {
+      const file = path.join(dir, `${section}.html`);
+      if (!args.force && existsSync(file) && (await nonEmpty(file))) { skip++; continue; }
+      const url = source.sectionUrl
+        .replace('{section}', section)
+        .replace('{section_slug}', section.replace('.', '-'))
+        .replace('{chapter}', ch.chapter)
+        .replace('{title_slug}', ch.title_slug ?? '')
+        .replace('{justia_title}', ch.justia_title ?? '');
+      try {
+        const html = await fetchWithRetry(fetchImpl, url);
+        const provenance = { section, chapter: ch.chapter, source: sourceKey, url, retrieved_at: new Date().toISOString(), raw_checksum: rawChecksum(html) };
+        await writeFile(file, html, 'utf8');
+        await writeFile(file.replace(/\.html$/, '.meta.json'), JSON.stringify(provenance, null, 2), 'utf8');
+        ok++;
+        process.stdout.write(`  ✓ ${section}\n`);
+      } catch (e) {
+        fail++;
+        process.stdout.write(`  ✗ ${section} — ${e.message}\n`);
       }
-    } catch (e) {
-      failedChapters.push(ch.chapter);
-      console.error(`[fetch] chapter ${ch.chapter} (${ch.label}) FAILED, moving to next chapter — ${e.message}`);
+      await sleep(source.rateLimitMs ?? 2000);
     }
     await fetchImpl.close?.();
   }
-  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail} chaptersFailed=${chaptersFailed}`);
-  if (fail || chaptersFailed) process.exitCode = 1;
+  console.log(`[fetch] done. fetched=${ok} skipped=${skip} failed=${fail} chaptersFailed=${failedChapters.length}${failedChapters.length ? ' [' + failedChapters.join(', ') + ']' : ''}`);
+  if (fail || failedChapters.length) process.exitCode = 1;
 }
 
 // ── DOR guidance pages (manifest.supplemental.pages) — plain fetch, HTML ───
