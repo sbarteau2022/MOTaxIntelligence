@@ -7,7 +7,7 @@
 // this index natively queryable by Atlas.
 //
 // Env:
-//   INGEST_URL   e.g. https://mo-tax.<subdomain>.workers.dev  (or wrangler dev URL)
+//   INGEST_URL   e.g. https://motaxintelligence.<subdomain>.workers.dev  (or wrangler dev URL)
 //   SERVICE_KEY  matches the Worker's TAX_SERVICE_KEY secret
 //
 // Usage: node scripts/ingest.mjs [--batch 50] [--dry-run]
