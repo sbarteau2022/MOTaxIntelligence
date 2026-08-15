@@ -67,7 +67,7 @@ npm run pull:fetch -- --source supplemental     # DOR guidance FAQ pages
 npm run pull:fetch -- --source regulations      # 12 CSR 10 (PDF) -- see docs/SOURCES.md
 npm run pull:build                              # processes ALL fetched sources in one pass
 npm run pull:verify
-INGEST_URL=https://mo-tax.<subdomain>.workers.dev SERVICE_KEY=... npm run pull:ingest
+INGEST_URL=https://motaxintelligence.<subdomain>.workers.dev SERVICE_KEY=... npm run pull:ingest
 
 npm run deploy
 ```
@@ -113,8 +113,8 @@ dispatch:
 plain-fetchable sources. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#database-management-cron--on-demand).
 
 ```bash
-curl -sX POST https://mo-tax.<subdomain>.workers.dev/admin/verify -H "authorization: Bearer $TAX_SERVICE_KEY"
-curl -s https://mo-tax.<subdomain>.workers.dev/admin/stats -H "authorization: Bearer $TAX_SERVICE_KEY"
+curl -sX POST https://motaxintelligence.<subdomain>.workers.dev/admin/verify -H "authorization: Bearer $TAX_SERVICE_KEY"
+curl -s https://motaxintelligence.<subdomain>.workers.dev/admin/stats -H "authorization: Bearer $TAX_SERVICE_KEY"
 ```
 
 ## Console
@@ -136,7 +136,7 @@ browser tab. `/health` (unauthenticated) is the only status surface exposed.
 ## Query
 
 ```bash
-curl -sX POST https://mo-tax.<subdomain>.workers.dev/query \
+curl -sX POST https://motaxintelligence.<subdomain>.workers.dev/query \
   -H 'content-type: application/json' \
   -d '{"q":"Can an S corp elect the pass-through entity tax?","entity":"s_corp","top_k":3}'
 ```
